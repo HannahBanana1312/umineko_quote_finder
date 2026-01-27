@@ -12,7 +12,7 @@ import (
 var dataFile string
 
 type Service interface {
-	Search(query string, limit int) []SearchResult
+	Search(query string, limit int, offset int) SearchResponse
 	GetByCharacter(characterID string, limit int) []ParsedQuote
 	Random(characterID string) *ParsedQuote
 	GetCharacters() map[string]string
@@ -27,6 +27,13 @@ type service struct {
 type SearchResult struct {
 	Quote ParsedQuote `json:"quote"`
 	Score int         `json:"score"`
+}
+
+type SearchResponse struct {
+	Results []SearchResult `json:"results"`
+	Total   int            `json:"total"`
+	Limit   int            `json:"limit"`
+	Offset  int            `json:"offset"`
 }
 
 func NewService() Service {
@@ -46,22 +53,45 @@ func NewService() Service {
 	}
 }
 
-func (s *service) Search(query string, limit int) []SearchResult {
+func (s *service) Search(query string, limit int, offset int) SearchResponse {
 	matches := fuzzy.Find(query, s.quoteTexts)
+	total := len(matches)
 
-	if limit <= 0 || limit > len(matches) {
-		limit = len(matches)
+	if offset < 0 {
+		offset = 0
+	}
+	if offset >= total {
+		return SearchResponse{
+			Results: []SearchResult{},
+			Total:   total,
+			Limit:   limit,
+			Offset:  offset,
+		}
 	}
 
-	results := make([]SearchResult, limit)
-	for i := 0; i < limit; i++ {
-		results[i] = SearchResult{
+	if limit <= 0 {
+		limit = 30
+	}
+
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+
+	results := make([]SearchResult, end-offset)
+	for i := offset; i < end; i++ {
+		results[i-offset] = SearchResult{
 			Quote: s.quotes[matches[i].Index],
 			Score: matches[i].Score,
 		}
 	}
 
-	return results
+	return SearchResponse{
+		Results: results,
+		Total:   total,
+		Limit:   limit,
+		Offset:  offset,
+	}
 }
 
 func (s *service) GetByCharacter(characterID string, limit int) []ParsedQuote {

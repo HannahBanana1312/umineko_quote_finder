@@ -382,6 +382,9 @@
             display: flex;
             flex-direction: column;
             gap: 1.5rem;
+            max-height: 60vh;
+            overflow-y: auto;
+            padding-right: 0.5rem;
         }
 
         .quote-card {
@@ -476,6 +479,57 @@
             font-family: monospace;
             font-size: 0.75rem;
             opacity: 0.7;
+        }
+
+        /* Pagination */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 1.5rem;
+            margin-top: 2rem;
+            padding: 1.5rem;
+            background: var(--bg-card);
+            border: 1px solid var(--purple-muted);
+            border-radius: 4px;
+        }
+
+        .pagination-btn {
+            background: linear-gradient(135deg, var(--bg-purple) 0%, var(--bg-card) 100%);
+            border: 2px solid var(--gold-dark);
+            padding: 1rem 2rem;
+            font-family: var(--font-display);
+            font-size: 1rem;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--gold);
+            cursor: pointer;
+            transition: all 0.3s var(--ease-out);
+        }
+
+        .pagination-btn:hover:not(:disabled) {
+            background: linear-gradient(135deg, var(--gold-dark) 0%, var(--gold) 100%);
+            border-color: var(--gold);
+            color: var(--bg-void);
+        }
+
+        .pagination-btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+            border-color: var(--purple-muted);
+            color: var(--text-muted);
+        }
+
+        .pagination-info {
+            font-family: var(--font-display);
+            font-size: 1.2rem;
+            color: var(--text);
+            letter-spacing: 0.05em;
+        }
+
+        .pagination-info span {
+            color: var(--gold);
+            font-weight: 600;
         }
 
         /* Loading State */
@@ -795,15 +849,23 @@
             `;
         }
 
-        function renderQuotes(results, query = '') {
+        let currentQuery = '';
+        let currentOffset = 0;
+        let currentTotal = 0;
+        const PAGE_SIZE = 30;
+
+        function renderQuotes(results, query, total, offset) {
             if (!results || results.length === 0) {
                 showEmpty();
                 return;
             }
 
+            const start = offset + 1;
+            const end = offset + results.length;
+
             const header = query ? `
                 <div class="results-header">
-                    <span class="results-count">Found <span>${results.length}</span> fragments for "${query}"</span>
+                    <span class="results-count">Showing <span>${start}-${end}</span> of <span>${total}</span> fragments for "${escapeHtml(query)}"</span>
                 </div>
             ` : '';
 
@@ -817,14 +879,40 @@
                             <span class="quote-character">— ${escapeHtml(quote.character)}</span>
                             <div class="quote-details">
                                 ${quote.episode ? `<span class="quote-episode">Episode ${quote.episode}</span>` : ''}
-                                ${quote.audioId ? `<span class="quote-audio">${quote.audioId}</span>` : ''}
+                                ${quote.audioId ? `<span class="quote-audio">${quote.audioId}.ogg</span>` : ''}
                             </div>
                         </div>
                     </article>
                 `;
             }).join('');
 
-            resultsContainer.innerHTML = header + `<div class="quotes-grid">${quotes}</div>`;
+            const totalPages = Math.ceil(total / PAGE_SIZE);
+            const currentPage = Math.floor(offset / PAGE_SIZE) + 1;
+
+            const pagination = total > PAGE_SIZE ? `
+                <div class="pagination">
+                    <button class="pagination-btn" id="prevPage" ${offset === 0 ? 'disabled' : ''}>◀ Previous</button>
+                    <span class="pagination-info">Page <span>${currentPage}</span> of <span>${totalPages}</span></span>
+                    <button class="pagination-btn" id="nextPage" ${end >= total ? 'disabled' : ''}>Next ▶</button>
+                </div>
+            ` : '';
+
+            resultsContainer.innerHTML = header + `<div class="quotes-grid">${quotes}</div>` + pagination;
+
+            if (total > PAGE_SIZE) {
+                document.getElementById('prevPage')?.addEventListener('click', () => {
+                    if (currentOffset >= PAGE_SIZE) {
+                        currentOffset -= PAGE_SIZE;
+                        search(currentQuery, currentOffset);
+                    }
+                });
+                document.getElementById('nextPage')?.addEventListener('click', () => {
+                    if (currentOffset + PAGE_SIZE < currentTotal) {
+                        currentOffset += PAGE_SIZE;
+                        search(currentQuery, currentOffset);
+                    }
+                });
+            }
         }
 
         function renderFeaturedQuote(quote) {
@@ -844,7 +932,7 @@
             return div.innerHTML;
         }
 
-        async function search(query) {
+        async function search(query, offset = 0) {
             if (!query.trim()) {
                 showEmpty('Enter a search term to find quotes.');
                 return;
@@ -854,10 +942,17 @@
 
             try {
                 const characterId = characterSelect.value;
-                let url = `${API_BASE}/search?q=${encodeURIComponent(query)}&limit=30`;
+                let url = `${API_BASE}/search?q=${encodeURIComponent(query)}&limit=${PAGE_SIZE}&offset=${offset}`;
+                if (characterId) {
+                    url += `&character=${characterId}`;
+                }
 
                 const response = await fetch(url);
                 const data = await response.json();
+
+                currentQuery = query;
+                currentOffset = data.offset;
+                currentTotal = data.total;
 
                 let results = data.results || [];
 
@@ -865,7 +960,7 @@
                     results = results.filter(r => r.quote.characterId === characterId);
                 }
 
-                renderQuotes(results, query);
+                renderQuotes(results, query, data.total, data.offset);
             } catch (error) {
                 console.error('Search failed:', error);
                 showEmpty('Failed to search. Please try again.');
@@ -894,9 +989,15 @@
             }
         }
 
-        searchBtn.addEventListener('click', () => search(searchInput.value));
+        searchBtn.addEventListener('click', () => {
+            currentOffset = 0;
+            search(searchInput.value, 0);
+        });
         searchInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') search(searchInput.value);
+            if (e.key === 'Enter') {
+                currentOffset = 0;
+                search(searchInput.value, 0);
+            }
         });
 
         randomBtn.addEventListener('click', getRandomQuote);
@@ -908,8 +1009,9 @@
         });
 
         characterSelect.addEventListener('change', () => {
+            currentOffset = 0;
             if (searchInput.value.trim()) {
-                search(searchInput.value);
+                search(searchInput.value, 0);
             } else {
                 getRandomQuote();
             }

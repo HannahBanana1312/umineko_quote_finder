@@ -35,13 +35,16 @@ func (s *Service) search(ctx *fiber.Ctx) error {
 		})
 	}
 
-	limit := ctx.QueryInt("limit", 50)
+	limit := ctx.QueryInt("limit", 30)
+	offset := ctx.QueryInt("offset", 0)
 
-	results := s.QuoteService.Search(query, limit)
+	response := s.QuoteService.Search(query, limit, offset)
 	return ctx.JSON(fiber.Map{
 		"query":   query,
-		"count":   len(results),
-		"results": results,
+		"results": response.Results,
+		"total":   response.Total,
+		"limit":   response.Limit,
+		"offset":  response.Offset,
 	})
 }
 

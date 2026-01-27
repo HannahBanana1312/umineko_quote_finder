@@ -309,6 +309,20 @@
             animation: fadeInUp 1s 0.3s var(--ease-out) both;
         }
 
+        .filter-row {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+            align-items: flex-end;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
         .filter-label {
             font-family: var(--font-display);
             font-size: 0.7rem;
@@ -320,10 +334,9 @@
             text-align: center;
         }
 
-        .character-select {
+        .character-select,
+        .episode-select {
             display: block;
-            max-width: 300px;
-            margin: 0 auto;
             background: var(--bg-card);
             border: 1px solid var(--purple-muted);
             padding: 0.75rem 1rem;
@@ -340,14 +353,86 @@
             padding-right: 2.5rem;
         }
 
-        .character-select:focus {
+        .character-select {
+            min-width: 200px;
+        }
+
+        .episode-select {
+            min-width: 150px;
+        }
+
+        .character-select:focus,
+        .episode-select:focus {
             outline: none;
             border-color: var(--gold);
         }
 
-        .character-select option {
+        .character-select option,
+        .episode-select option {
             background: var(--bg-purple);
             color: var(--text);
+        }
+
+        .browse-btn {
+            background: linear-gradient(135deg, var(--purple) 0%, var(--purple-muted) 100%);
+            border: 1px solid var(--purple-light);
+            padding: 0.75rem 1.5rem;
+            font-family: var(--font-display);
+            font-size: 0.85rem;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--text);
+            cursor: pointer;
+            transition: all 0.3s var(--ease-out);
+            border-radius: 4px;
+        }
+
+        .browse-btn:hover {
+            background: linear-gradient(135deg, var(--purple-light) 0%, var(--purple) 100%);
+            border-color: var(--gold);
+            color: var(--gold);
+        }
+
+        .browse-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Browse Mode Header */
+        .browse-header {
+            text-align: center;
+            margin-bottom: 1.5rem;
+            padding: 1.5rem;
+            background: linear-gradient(135deg, rgba(107, 76, 154, 0.2) 0%, rgba(212, 168, 75, 0.05) 100%);
+            border: 1px solid var(--purple-muted);
+            border-radius: 4px;
+        }
+
+        .browse-title {
+            font-family: var(--font-display);
+            font-size: 1.3rem;
+            color: var(--gold);
+            letter-spacing: 0.1em;
+            margin-bottom: 0.5rem;
+        }
+
+        .browse-subtitle {
+            font-style: italic;
+            color: var(--text-muted);
+        }
+
+        /* Quote Number Badge */
+        .quote-number {
+            position: absolute;
+            top: 0.75rem;
+            right: 0.75rem;
+            background: var(--purple-muted);
+            color: var(--text-muted);
+            font-family: var(--font-display);
+            font-size: 0.65rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 2px;
+            letter-spacing: 0.05em;
         }
 
         /* Results Section */
@@ -484,6 +569,16 @@
         .quote-name {
             color: var(--gold);
             font-weight: 500;
+        }
+
+        .red-truth {
+            color: #ff3333;
+            font-weight: 600;
+        }
+
+        .blue-truth {
+            color: #3399ff;
+            font-weight: 600;
         }
 
         /* Pagination */
@@ -774,10 +869,32 @@
         </section>
 
         <section class="filter-section">
-            <label class="filter-label">Filter by Character</label>
-            <select class="character-select" id="characterSelect">
-                <option value="">All Characters</option>
-            </select>
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label class="filter-label">Character</label>
+                    <select class="character-select" id="characterSelect">
+                        <option value="">All Characters</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label class="filter-label">Episode</label>
+                    <select class="episode-select" id="episodeSelect">
+                        <option value="0">All Episodes</option>
+                        <option value="1">Episode 1 — Legend</option>
+                        <option value="2">Episode 2 — Turn</option>
+                        <option value="3">Episode 3 — Banquet</option>
+                        <option value="4">Episode 4 — Alliance</option>
+                        <option value="5">Episode 5 — End</option>
+                        <option value="6">Episode 6 — Dawn</option>
+                        <option value="7">Episode 7 — Requiem</option>
+                        <option value="8">Episode 8 — Twilight</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label class="filter-label">&nbsp;</label>
+                    <button class="browse-btn" id="browseBtn" disabled>Browse Dialogue</button>
+                </div>
+            </div>
         </section>
 
         <section class="results-section">
@@ -799,7 +916,15 @@
         const randomBtn = document.getElementById('randomBtn');
         const clearBtn = document.getElementById('clearBtn');
         const characterSelect = document.getElementById('characterSelect');
+        const episodeSelect = document.getElementById('episodeSelect');
+        const browseBtn = document.getElementById('browseBtn');
         const resultsContainer = document.getElementById('resultsContainer');
+
+        let browseMode = false;
+        let browseCharacter = '';
+        let browseEpisode = 0;
+        let browseOffset = 0;
+        let browseTotal = 0;
 
         function createButterflies() {
             const container = document.getElementById('butterflies');
@@ -943,13 +1068,18 @@
                 return;
             }
 
+            browseMode = false;
             showLoading();
 
             try {
                 const characterId = characterSelect.value;
+                const episode = episodeSelect.value;
                 let url = `${API_BASE}/search?q=${encodeURIComponent(query)}&limit=${PAGE_SIZE}&offset=${offset}`;
                 if (characterId) {
                     url += `&character=${characterId}`;
+                }
+                if (episode && episode !== '0') {
+                    url += `&episode=${episode}`;
                 }
 
                 const response = await fetch(url);
@@ -969,13 +1099,22 @@
         }
 
         async function getRandomQuote() {
+            browseMode = false;
             showLoading();
 
             try {
                 const characterId = characterSelect.value;
+                const episode = episodeSelect.value;
                 let url = `${API_BASE}/random`;
+                const params = [];
                 if (characterId) {
-                    url += `?character=${characterId}`;
+                    params.push(`character=${characterId}`);
+                }
+                if (episode && episode !== '0') {
+                    params.push(`episode=${episode}`);
+                }
+                if (params.length > 0) {
+                    url += '?' + params.join('&');
                 }
                 const response = await fetch(url);
                 const quote = await response.json();
@@ -1006,17 +1145,127 @@
         clearBtn.addEventListener('click', () => {
             searchInput.value = '';
             characterSelect.value = '';
+            episodeSelect.value = '0';
             resultsContainer.innerHTML = '';
+            browseMode = false;
+            browseBtn.disabled = true;
         });
 
         characterSelect.addEventListener('change', () => {
-            currentOffset = 0;
-            if (searchInput.value.trim()) {
-                search(searchInput.value, 0);
-            } else {
-                getRandomQuote();
+            browseBtn.disabled = !characterSelect.value;
+            if (!browseMode) {
+                currentOffset = 0;
+                if (searchInput.value.trim()) {
+                    search(searchInput.value, 0);
+                }
             }
         });
+
+        episodeSelect.addEventListener('change', () => {
+            if (browseMode && browseCharacter) {
+                browseEpisode = parseInt(episodeSelect.value) || 0;
+                browseOffset = 0;
+                browseCharacterDialogue(browseCharacter, browseOffset, browseEpisode);
+            } else if (searchInput.value.trim()) {
+                currentOffset = 0;
+                search(searchInput.value, 0);
+            }
+        });
+
+        browseBtn.addEventListener('click', () => {
+            const characterId = characterSelect.value;
+            if (!characterId) return;
+
+            browseMode = true;
+            browseCharacter = characterId;
+            browseEpisode = parseInt(episodeSelect.value) || 0;
+            browseOffset = 0;
+            searchInput.value = '';
+            browseCharacterDialogue(characterId, 0, browseEpisode);
+        });
+
+        async function browseCharacterDialogue(characterId, offset = 0, episode = 0) {
+            showLoading();
+
+            try {
+                let url = `${API_BASE}/character/${characterId}?limit=${PAGE_SIZE}&offset=${offset}`;
+                if (episode > 0) {
+                    url += `&episode=${episode}`;
+                }
+
+                const response = await fetch(url);
+                const data = await response.json();
+
+                browseOffset = data.offset;
+                browseTotal = data.total;
+
+                renderBrowseResults(data);
+            } catch (error) {
+                console.error('Browse failed:', error);
+                showEmpty('Failed to load character dialogue.');
+            }
+        }
+
+        function renderBrowseResults(data) {
+            if (!data.quotes || data.quotes.length === 0) {
+                showEmpty('No dialogue found for this character.');
+                return;
+            }
+
+            const episodeLabel = browseEpisode > 0 ? ` — Episode ${browseEpisode}` : '';
+            const header = `
+                <div class="browse-header">
+                    <h2 class="browse-title">${escapeHtml(data.character)}${episodeLabel}</h2>
+                    <p class="browse-subtitle">Showing lines ${data.offset + 1}-${data.offset + data.quotes.length} of ${data.total} in story order</p>
+                </div>
+            `;
+
+            const quotes = data.quotes.map((quote, index) => {
+                const lineNum = data.offset + index + 1;
+                return `
+                    <article class="quote-card" style="--index: ${index}">
+                        <span class="quote-number">#${lineNum}</span>
+                        <span class="quote-mark">"</span>
+                        <p class="quote-text">${quote.textHtml || escapeHtml(quote.text)}</p>
+                        <div class="quote-meta">
+                            <span class="quote-character">— ${escapeHtml(quote.character)}</span>
+                            <div class="quote-details">
+                                ${quote.episode ? `<span class="quote-episode">Episode ${quote.episode}</span>` : ''}
+                                ${quote.audioId ? `<span class="quote-audio">${quote.audioId}.ogg</span>` : ''}
+                            </div>
+                        </div>
+                    </article>
+                `;
+            }).join('');
+
+            const totalPages = Math.ceil(data.total / PAGE_SIZE);
+            const currentPage = Math.floor(data.offset / PAGE_SIZE) + 1;
+
+            const pagination = data.total > PAGE_SIZE ? `
+                <div class="pagination">
+                    <button class="pagination-btn" id="browsePrev" ${data.offset === 0 ? 'disabled' : ''}>◀ Previous</button>
+                    <span class="pagination-info">Page <span>${currentPage}</span> of <span>${totalPages}</span></span>
+                    <button class="pagination-btn" id="browseNext" ${data.offset + data.quotes.length >= data.total ? 'disabled' : ''}>Next ▶</button>
+                </div>
+            ` : '';
+
+            resultsContainer.innerHTML = header + `<div class="quotes-grid">${quotes}</div>` + pagination;
+
+            if (data.total > PAGE_SIZE) {
+                document.getElementById('browsePrev')?.addEventListener('click', () => {
+                    if (browseOffset >= PAGE_SIZE) {
+                        browseOffset -= PAGE_SIZE;
+                        browseCharacterDialogue(browseCharacter, browseOffset, browseEpisode);
+                    }
+                });
+                document.getElementById('browseNext')?.addEventListener('click', () => {
+                    if (browseOffset + PAGE_SIZE < browseTotal) {
+                        browseOffset += PAGE_SIZE;
+                        browseCharacterDialogue(browseCharacter, browseOffset, browseEpisode);
+                    }
+                });
+            }
+        }
 
         createButterflies();
         loadCharacters();

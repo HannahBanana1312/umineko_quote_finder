@@ -15,7 +15,13 @@ type parser struct {
 	dialogueLineRegex  *regexp.Regexp
 	voiceMetaRegex     *regexp.Regexp
 	characterNameRegex *regexp.Regexp
+	characterNameAlt   *regexp.Regexp
+	redTruthRegex      *regexp.Regexp
+	blueTruthRegex     *regexp.Regexp
 	colourTextRegex    *regexp.Regexp
+	rubyTextRegex      *regexp.Regexp
+	italicTextRegex    *regexp.Regexp
+	genericTagRegex    *regexp.Regexp
 	bracketRegex       *regexp.Regexp
 	cleanupPatterns    []string
 }
@@ -25,7 +31,13 @@ func NewParser() Parser {
 		dialogueLineRegex:  regexp.MustCompile(`^d2? \[lv`),
 		voiceMetaRegex:     regexp.MustCompile(`\[lv 0\*"(\d+)"\*"(\d+)"\]`),
 		characterNameRegex: regexp.MustCompile(`\{f:\d+:([^}]+)\}`),
+		characterNameAlt:   regexp.MustCompile(`\{p:\d{2,}:([^}]+)\}`),
+		redTruthRegex:      regexp.MustCompile(`\{p:1:([^}]+)\}`),
+		blueTruthRegex:     regexp.MustCompile(`\{p:2:([^}]+)\}`),
 		colourTextRegex:    regexp.MustCompile(`\{c:([A-Fa-f0-9]+):([^}]+)\}`),
+		rubyTextRegex:      regexp.MustCompile(`\{ruby:([^:]+):([^}]+)\}`),
+		italicTextRegex:    regexp.MustCompile(`\{i:([^}]+)\}`),
+		genericTagRegex:    regexp.MustCompile(`\{[a-z]+:[^}]*\}`),
 		bracketRegex:       regexp.MustCompile(`\[[^\]]*\]`),
 		cleanupPatterns: []string{
 			"`[@]", "`[\\]", "`[|]", "`\"", "\"`",
@@ -101,9 +113,21 @@ func (p *parser) extractText(line string) (string, string) {
 
 	textHtml := p.colourTextRegex.ReplaceAllString(escapedText, `<span style="color:#$1">$2</span>`)
 	textHtml = p.characterNameRegex.ReplaceAllString(textHtml, `<span class="quote-name">$1</span>`)
+	textHtml = p.characterNameAlt.ReplaceAllString(textHtml, `<span class="quote-name">$1</span>`)
+	textHtml = p.redTruthRegex.ReplaceAllString(textHtml, `<span class="red-truth">$1</span>`)
+	textHtml = p.blueTruthRegex.ReplaceAllString(textHtml, `<span class="blue-truth">$1</span>`)
+	textHtml = p.rubyTextRegex.ReplaceAllString(textHtml, `<ruby>$2<rp>(</rp><rt>$1</rt><rp>)</rp></ruby>`)
+	textHtml = p.italicTextRegex.ReplaceAllString(textHtml, `<em>$1</em>`)
+	textHtml = p.genericTagRegex.ReplaceAllString(textHtml, "")
 
 	plainText := p.colourTextRegex.ReplaceAllString(text, "$2")
 	plainText = p.characterNameRegex.ReplaceAllString(plainText, "$1")
+	plainText = p.characterNameAlt.ReplaceAllString(plainText, "$1")
+	plainText = p.redTruthRegex.ReplaceAllString(plainText, "$1")
+	plainText = p.blueTruthRegex.ReplaceAllString(plainText, "$1")
+	plainText = p.rubyTextRegex.ReplaceAllString(plainText, "$2 ($1)")
+	plainText = p.italicTextRegex.ReplaceAllString(plainText, "$1")
+	plainText = p.genericTagRegex.ReplaceAllString(plainText, "")
 
 	return plainText, textHtml
 }

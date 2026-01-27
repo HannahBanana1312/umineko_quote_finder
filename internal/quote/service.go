@@ -12,10 +12,19 @@ import (
 var dataFile string
 
 type Service interface {
-	Search(query string, limit int, offset int, characterID string, forceFuzzy bool) SearchResponse
-	GetByCharacter(characterID string, limit int) []ParsedQuote
-	Random(characterID string) *ParsedQuote
+	Search(query string, limit int, offset int, characterID string, episode int, forceFuzzy bool) SearchResponse
+	GetByCharacter(characterID string, limit int, offset int, episode int) CharacterResponse
+	Random(characterID string, episode int) *ParsedQuote
 	GetCharacters() map[string]string
+}
+
+type CharacterResponse struct {
+	CharacterID string        `json:"characterId"`
+	Character   string        `json:"character"`
+	Quotes      []ParsedQuote `json:"quotes"`
+	Total       int           `json:"total"`
+	Limit       int           `json:"limit"`
+	Offset      int           `json:"offset"`
 }
 
 type service struct {
@@ -53,12 +62,22 @@ func NewService() Service {
 	}
 }
 
-func (s *service) Search(query string, limit int, offset int, characterID string, forceFuzzy bool) SearchResponse {
+func (s *service) Search(query string, limit int, offset int, characterID string, episode int, forceFuzzy bool) SearchResponse {
 	if limit <= 0 {
 		limit = 30
 	}
 	if offset < 0 {
 		offset = 0
+	}
+
+	matchesFilter := func(q ParsedQuote) bool {
+		if characterID != "" && q.CharacterID != characterID {
+			return false
+		}
+		if episode > 0 && q.Episode != episode {
+			return false
+		}
+		return true
 	}
 
 	if !forceFuzzy {
@@ -67,7 +86,7 @@ func (s *service) Search(query string, limit int, offset int, characterID string
 
 		for i := 0; i < len(s.quotes); i++ {
 			if strings.Contains(strings.ToLower(s.quoteTexts[i]), queryLower) {
-				if characterID == "" || s.quotes[i].CharacterID == characterID {
+				if matchesFilter(s.quotes[i]) {
 					exactMatches = append(exactMatches, SearchResult{
 						Quote: s.quotes[i],
 						Score: 100,
@@ -98,7 +117,7 @@ func (s *service) Search(query string, limit int, offset int, characterID string
 	var fuzzyResults []SearchResult
 	for i := 0; i < len(matches); i++ {
 		if matches[i].Score >= relativeThreshold && matches[i].Score >= minFuzzyScore {
-			if characterID == "" || s.quotes[matches[i].Index].CharacterID == characterID {
+			if matchesFilter(s.quotes[matches[i].Index]) {
 				fuzzyResults = append(fuzzyResults, SearchResult{
 					Quote: s.quotes[matches[i].Index],
 					Score: matches[i].Score,
@@ -135,36 +154,64 @@ func paginateResults(results []SearchResult, limit int, offset int) SearchRespon
 	}
 }
 
-func (s *service) GetByCharacter(characterID string, limit int) []ParsedQuote {
-	var results []ParsedQuote
+func (s *service) GetByCharacter(characterID string, limit int, offset int, episode int) CharacterResponse {
+	if limit <= 0 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
 
+	var all []ParsedQuote
 	for i := 0; i < len(s.quotes); i++ {
 		if s.quotes[i].CharacterID == characterID {
-			results = append(results, s.quotes[i])
-			if limit > 0 && len(results) >= limit {
-				break
+			if episode <= 0 || s.quotes[i].Episode == episode {
+				all = append(all, s.quotes[i])
 			}
 		}
 	}
 
-	return results
+	total := len(all)
+	if offset >= total {
+		return CharacterResponse{
+			CharacterID: characterID,
+			Character:   GetCharacterName(characterID),
+			Quotes:      []ParsedQuote{},
+			Total:       total,
+			Limit:       limit,
+			Offset:      offset,
+		}
+	}
+
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+
+	return CharacterResponse{
+		CharacterID: characterID,
+		Character:   GetCharacterName(characterID),
+		Quotes:      all[offset:end],
+		Total:       total,
+		Limit:       limit,
+		Offset:      offset,
+	}
 }
 
-func (s *service) Random(characterID string) *ParsedQuote {
+func (s *service) Random(characterID string, episode int) *ParsedQuote {
 	if len(s.quotes) == 0 {
 		return nil
 	}
 
-	if characterID == "" {
-		idx := rand.IntN(len(s.quotes))
-		return &s.quotes[idx]
-	}
-
 	var filtered []ParsedQuote
 	for i := 0; i < len(s.quotes); i++ {
-		if s.quotes[i].CharacterID == characterID {
-			filtered = append(filtered, s.quotes[i])
+		if characterID != "" && s.quotes[i].CharacterID != characterID {
+			continue
 		}
+		if episode > 0 && s.quotes[i].Episode != episode {
+			continue
+		}
+		filtered = append(filtered, s.quotes[i])
 	}
 
 	if len(filtered) == 0 {

@@ -1,0 +1,923 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Umineko Quote Search — When the Seagulls Cry</title>
+    <meta name="description" content="Search through the words of witches, humans, and furniture from Umineko no Naku Koro ni">
+    <meta name="theme-color" content="#d4a84b">
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-void: #0a0612;
+            --bg-purple: #1a0f2e;
+            --bg-card: #150d24;
+            --bg-card-hover: #1d1230;
+            --gold: #d4a84b;
+            --gold-light: #f0d590;
+            --gold-dark: #a67c2e;
+            --purple: #6b4c9a;
+            --purple-light: #9d7bc9;
+            --purple-muted: #3d2a5c;
+            --text: #e8e0f0;
+            --text-muted: #a89bb8;
+            --rose: #8b2942;
+            --font-display: 'Cinzel', serif;
+            --font-body: 'Cormorant Garamond', serif;
+            --ease-out: cubic-bezier(0.4, 0, 0.2, 1);
+            --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        *, *::before, *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            font-size: 16px;
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: var(--font-body);
+            background: var(--bg-void);
+            color: var(--text);
+            min-height: 100vh;
+            line-height: 1.7;
+            overflow-x: hidden;
+        }
+
+        ::selection {
+            background: var(--gold);
+            color: var(--bg-void);
+        }
+
+        /* Golden Butterflies */
+        .butterflies {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 1000;
+            overflow: hidden;
+        }
+
+        .butterfly {
+            position: absolute;
+            font-size: 1.2rem;
+            color: var(--gold);
+            opacity: 0;
+            text-shadow: 0 0 15px var(--gold), 0 0 30px rgba(212, 168, 75, 0.5);
+            animation: flutter var(--duration, 25s) var(--delay, 0s) infinite linear;
+        }
+
+        @keyframes flutter {
+            0% {
+                transform: translateY(100vh) translateX(var(--start-x, 0)) rotate(0deg) scale(0.8);
+                opacity: 0;
+            }
+            5% { opacity: 0.7; }
+            25% {
+                transform: translateY(75vh) translateX(calc(var(--start-x, 0) + 80px)) rotate(90deg) scale(1);
+            }
+            50% {
+                transform: translateY(50vh) translateX(calc(var(--start-x, 0) - 40px)) rotate(180deg) scale(1.1);
+                opacity: 0.8;
+            }
+            75% {
+                transform: translateY(25vh) translateX(calc(var(--start-x, 0) + 60px)) rotate(270deg) scale(1);
+            }
+            95% { opacity: 0.6; }
+            100% {
+                transform: translateY(-10vh) translateX(var(--start-x, 0)) rotate(360deg) scale(0.9);
+                opacity: 0;
+            }
+        }
+
+        /* Background Pattern */
+        .bg-pattern {
+            position: fixed;
+            inset: 0;
+            background:
+                radial-gradient(ellipse at 30% 20%, rgba(107, 76, 154, 0.12) 0%, transparent 50%),
+                radial-gradient(ellipse at 70% 80%, rgba(212, 168, 75, 0.08) 0%, transparent 40%),
+                radial-gradient(circle at 50% 50%, rgba(139, 41, 66, 0.05) 0%, transparent 60%),
+                repeating-linear-gradient(0deg, transparent, transparent 100px, rgba(212, 168, 75, 0.02) 100px, rgba(212, 168, 75, 0.02) 101px),
+                repeating-linear-gradient(90deg, transparent, transparent 100px, rgba(212, 168, 75, 0.02) 100px, rgba(212, 168, 75, 0.02) 101px);
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        /* Main Container */
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            padding: 4rem 0 3rem;
+            animation: fadeInDown 1s var(--ease-out) forwards;
+        }
+
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .ornament {
+            color: var(--gold);
+            font-size: 1.5rem;
+            letter-spacing: 1rem;
+            margin-bottom: 1rem;
+            text-shadow: 0 0 20px var(--gold);
+            opacity: 0.8;
+        }
+
+        .title {
+            font-family: var(--font-display);
+            font-size: clamp(2rem, 6vw, 3.5rem);
+            font-weight: 600;
+            color: var(--gold);
+            text-shadow: 0 0 40px rgba(212, 168, 75, 0.4);
+            letter-spacing: 0.15em;
+            margin-bottom: 0.5rem;
+        }
+
+        .subtitle {
+            font-family: var(--font-body);
+            font-size: 1.3rem;
+            font-style: italic;
+            color: var(--text-muted);
+            font-weight: 400;
+        }
+
+        /* Search Section */
+        .search-section {
+            margin: 2rem 0 3rem;
+            animation: fadeInUp 1s 0.2s var(--ease-out) both;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .search-container {
+            position: relative;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .search-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+            background: linear-gradient(135deg, var(--bg-card) 0%, rgba(26, 15, 46, 0.9) 100%);
+            border: 1px solid var(--purple-muted);
+            border-radius: 4px;
+            overflow: hidden;
+            transition: all 0.4s var(--ease-out);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(212, 168, 75, 0.1);
+        }
+
+        .search-wrapper:focus-within {
+            border-color: var(--gold);
+            box-shadow: 0 4px 40px rgba(212, 168, 75, 0.2), 0 0 0 1px var(--gold-dark), inset 0 1px 0 rgba(212, 168, 75, 0.2);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 1.25rem;
+            color: var(--gold);
+            opacity: 0.7;
+            font-size: 1.1rem;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+
+        .search-wrapper:focus-within .search-icon {
+            opacity: 1;
+        }
+
+        .search-input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            padding: 1.25rem 1rem 1.25rem 3.5rem;
+            font-family: var(--font-body);
+            font-size: 1.2rem;
+            color: var(--text);
+            outline: none;
+        }
+
+        .search-input::placeholder {
+            color: var(--text-muted);
+            font-style: italic;
+        }
+
+        .search-btn {
+            background: linear-gradient(135deg, var(--gold-dark) 0%, var(--gold) 100%);
+            border: none;
+            padding: 1.25rem 2rem;
+            font-family: var(--font-display);
+            font-size: 0.85rem;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            color: var(--bg-void);
+            cursor: pointer;
+            transition: all 0.3s var(--ease-out);
+        }
+
+        .search-btn:hover {
+            background: linear-gradient(135deg, var(--gold) 0%, var(--gold-light) 100%);
+        }
+
+        .search-btn:active {
+            transform: scale(0.98);
+        }
+
+        /* Action Buttons */
+        .actions {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-top: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .action-btn {
+            background: transparent;
+            border: 1px solid var(--purple-muted);
+            padding: 0.75rem 1.5rem;
+            font-family: var(--font-display);
+            font-size: 0.75rem;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.3s var(--ease-out);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .action-btn::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, var(--gold) 0%, var(--gold-dark) 100%);
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: -1;
+        }
+
+        .action-btn:hover {
+            border-color: var(--gold);
+            color: var(--gold);
+        }
+
+        .action-btn:hover::before {
+            opacity: 0.1;
+        }
+
+        .action-btn.active {
+            border-color: var(--gold);
+            color: var(--gold);
+            background: rgba(212, 168, 75, 0.1);
+        }
+
+        /* Character Filter */
+        .filter-section {
+            margin-bottom: 2rem;
+            animation: fadeInUp 1s 0.3s var(--ease-out) both;
+        }
+
+        .filter-label {
+            font-family: var(--font-display);
+            font-size: 0.7rem;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 0.75rem;
+            display: block;
+            text-align: center;
+        }
+
+        .character-select {
+            display: block;
+            max-width: 300px;
+            margin: 0 auto;
+            background: var(--bg-card);
+            border: 1px solid var(--purple-muted);
+            padding: 0.75rem 1rem;
+            font-family: var(--font-body);
+            font-size: 1rem;
+            color: var(--text);
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s var(--ease-out);
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23d4a84b' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 1rem center;
+            padding-right: 2.5rem;
+        }
+
+        .character-select:focus {
+            outline: none;
+            border-color: var(--gold);
+        }
+
+        .character-select option {
+            background: var(--bg-purple);
+            color: var(--text);
+        }
+
+        /* Results Section */
+        .results-section {
+            flex: 1;
+            animation: fadeInUp 1s 0.4s var(--ease-out) both;
+        }
+
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--purple-muted);
+        }
+
+        .results-count {
+            font-family: var(--font-display);
+            font-size: 0.75rem;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+        }
+
+        .results-count span {
+            color: var(--gold);
+        }
+
+        /* Quote Cards */
+        .quotes-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .quote-card {
+            background: linear-gradient(135deg, var(--bg-card) 0%, rgba(21, 13, 36, 0.8) 100%);
+            border: 1px solid var(--purple-muted);
+            border-left: 3px solid var(--gold);
+            padding: 2rem;
+            position: relative;
+            transition: all 0.4s var(--ease-out);
+            animation: cardFadeIn 0.5s var(--ease-out) both;
+            animation-delay: calc(var(--index, 0) * 0.08s);
+        }
+
+        @keyframes cardFadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .quote-card:hover {
+            border-color: var(--gold-dark);
+            background: linear-gradient(135deg, var(--bg-card-hover) 0%, rgba(26, 15, 46, 0.9) 100%);
+            transform: translateX(4px);
+            box-shadow: 0 8px 40px rgba(0, 0, 0, 0.3), -4px 0 20px rgba(212, 168, 75, 0.1);
+        }
+
+        .quote-mark {
+            position: absolute;
+            top: 1rem;
+            left: 1.5rem;
+            font-family: var(--font-display);
+            font-size: 4rem;
+            color: var(--gold);
+            opacity: 0.15;
+            line-height: 1;
+            pointer-events: none;
+        }
+
+        .quote-text {
+            font-size: 1.25rem;
+            font-style: italic;
+            line-height: 1.8;
+            color: var(--text);
+            margin-bottom: 1.5rem;
+            position: relative;
+            z-index: 1;
+        }
+
+        .quote-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .quote-character {
+            font-family: var(--font-display);
+            font-size: 0.9rem;
+            color: var(--gold);
+            letter-spacing: 0.1em;
+        }
+
+        .quote-details {
+            display: flex;
+            gap: 1.5rem;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .quote-episode {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .quote-episode::before {
+            content: '◆';
+            color: var(--purple-light);
+            font-size: 0.6rem;
+        }
+
+        .quote-audio {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-family: monospace;
+            font-size: 0.75rem;
+            opacity: 0.7;
+        }
+
+        /* Loading State */
+        .loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 4rem;
+            color: var(--text-muted);
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 2px solid var(--purple-muted);
+            border-top-color: var(--gold);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 1rem;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            font-style: italic;
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: var(--text-muted);
+        }
+
+        .empty-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+
+        .empty-title {
+            font-family: var(--font-display);
+            font-size: 1.2rem;
+            color: var(--text);
+            margin-bottom: 0.5rem;
+        }
+
+        .empty-subtitle {
+            font-style: italic;
+        }
+
+        /* Featured Quote (Random) */
+        .featured-quote {
+            background: linear-gradient(135deg, rgba(107, 76, 154, 0.2) 0%, rgba(212, 168, 75, 0.1) 100%);
+            border: 1px solid var(--gold-dark);
+            padding: 3rem;
+            text-align: center;
+            position: relative;
+            margin-bottom: 2rem;
+        }
+
+        .featured-quote::before,
+        .featured-quote::after {
+            content: '❧';
+            position: absolute;
+            color: var(--gold);
+            opacity: 0.4;
+            font-size: 1.5rem;
+        }
+
+        .featured-quote::before {
+            top: 1rem;
+            left: 1.5rem;
+        }
+
+        .featured-quote::after {
+            bottom: 1rem;
+            right: 1.5rem;
+            transform: rotate(180deg);
+        }
+
+        .featured-label {
+            font-family: var(--font-display);
+            font-size: 0.65rem;
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+            color: var(--gold);
+            margin-bottom: 1.5rem;
+        }
+
+        .featured-text {
+            font-size: 1.5rem;
+            font-style: italic;
+            line-height: 1.9;
+            color: var(--text);
+            margin-bottom: 1.5rem;
+            max-width: 700px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .featured-character {
+            font-family: var(--font-display);
+            font-size: 1rem;
+            color: var(--gold);
+            letter-spacing: 0.15em;
+        }
+
+        .featured-episode {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin-top: 0.5rem;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 3rem 0 2rem;
+            margin-top: auto;
+            border-top: 1px solid var(--purple-muted);
+        }
+
+        .footer-ornament {
+            color: var(--gold);
+            font-size: 1rem;
+            letter-spacing: 0.5rem;
+            margin-bottom: 1rem;
+            opacity: 0.6;
+        }
+
+        .footer-text {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            font-style: italic;
+        }
+
+        .footer-credit {
+            font-size: 0.75rem;
+            color: var(--purple-light);
+            margin-top: 0.5rem;
+            opacity: 0.7;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+
+            .header {
+                padding: 3rem 0 2rem;
+            }
+
+            .title {
+                letter-spacing: 0.1em;
+            }
+
+            .search-wrapper {
+                flex-direction: column;
+            }
+
+            .search-input {
+                width: 100%;
+                padding: 1rem 1rem 1rem 3rem;
+            }
+
+            .search-btn {
+                width: 100%;
+                padding: 1rem;
+            }
+
+            .quote-card {
+                padding: 1.5rem;
+            }
+
+            .quote-meta {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .featured-quote {
+                padding: 2rem 1.5rem;
+            }
+        }
+
+        /* Hide scrollbar but keep functionality */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-void);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--purple-muted);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--purple);
+        }
+    </style>
+</head>
+<body>
+    <div class="butterflies" id="butterflies"></div>
+    <div class="bg-pattern"></div>
+
+    <div class="container">
+        <header class="header">
+            <div class="ornament">✦ ✦ ✦</div>
+            <h1 class="title">Umineko Quotes</h1>
+            <p class="subtitle">When the seagulls cry, none shall remain</p>
+        </header>
+
+        <section class="search-section">
+            <div class="search-container">
+                <div class="search-wrapper">
+                    <span class="search-icon">🦋</span>
+                    <input
+                        type="text"
+                        class="search-input"
+                        id="searchInput"
+                        placeholder="Search for truth within the fragments..."
+                        autocomplete="off"
+                    >
+                    <button class="search-btn" id="searchBtn">Search</button>
+                </div>
+                <div class="actions">
+                    <button class="action-btn" id="randomBtn">✦ Random Quote</button>
+                    <button class="action-btn" id="clearBtn">Clear Results</button>
+                </div>
+            </div>
+        </section>
+
+        <section class="filter-section">
+            <label class="filter-label">Filter by Character</label>
+            <select class="character-select" id="characterSelect">
+                <option value="">All Characters</option>
+            </select>
+        </section>
+
+        <section class="results-section">
+            <div id="resultsContainer"></div>
+        </section>
+
+        <footer class="footer">
+            <div class="footer-ornament">♦ ♣ ♥ ♠</div>
+            <p class="footer-text">Without love, it cannot be seen.</p>
+            <p class="footer-credit">From the world of Umineko no Naku Koro ni by 07th Expansion</p>
+        </footer>
+    </div>
+
+    <script>
+        const API_BASE = '/api/v1';
+
+        const searchInput = document.getElementById('searchInput');
+        const searchBtn = document.getElementById('searchBtn');
+        const randomBtn = document.getElementById('randomBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const characterSelect = document.getElementById('characterSelect');
+        const resultsContainer = document.getElementById('resultsContainer');
+
+        function createButterflies() {
+            const container = document.getElementById('butterflies');
+            const count = 8;
+
+            for (let i = 0; i < count; i++) {
+                const butterfly = document.createElement('div');
+                butterfly.className = 'butterfly';
+                butterfly.innerHTML = '🦋';
+                butterfly.style.setProperty('--start-x', `${Math.random() * 100}vw`);
+                butterfly.style.setProperty('--duration', `${20 + Math.random() * 15}s`);
+                butterfly.style.setProperty('--delay', `${Math.random() * 20}s`);
+                butterfly.style.left = `${Math.random() * 100}%`;
+                container.appendChild(butterfly);
+            }
+        }
+
+        async function loadCharacters() {
+            try {
+                const response = await fetch(`${API_BASE}/characters`);
+                const characters = await response.json();
+
+                const sorted = Object.entries(characters).sort((a, b) => a[1].localeCompare(b[1]));
+
+                for (const [id, name] of sorted) {
+                    const option = document.createElement('option');
+                    option.value = id;
+                    option.textContent = name;
+                    characterSelect.appendChild(option);
+                }
+            } catch (error) {
+                console.error('Failed to load characters:', error);
+            }
+        }
+
+        function showLoading() {
+            resultsContainer.innerHTML = `
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    <p class="loading-text">Searching through the fragments...</p>
+                </div>
+            `;
+        }
+
+        function showEmpty(message = 'No quotes found in this fragment.') {
+            resultsContainer.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-icon">🦋</div>
+                    <h3 class="empty-title">The Golden Land remains silent</h3>
+                    <p class="empty-subtitle">${message}</p>
+                </div>
+            `;
+        }
+
+        function renderQuotes(results, query = '') {
+            if (!results || results.length === 0) {
+                showEmpty();
+                return;
+            }
+
+            const header = query ? `
+                <div class="results-header">
+                    <span class="results-count">Found <span>${results.length}</span> fragments for "${query}"</span>
+                </div>
+            ` : '';
+
+            const quotes = results.map((item, index) => {
+                const quote = item.quote || item;
+                return `
+                    <article class="quote-card" style="--index: ${index}">
+                        <span class="quote-mark">"</span>
+                        <p class="quote-text">${escapeHtml(quote.text)}</p>
+                        <div class="quote-meta">
+                            <span class="quote-character">— ${escapeHtml(quote.character)}</span>
+                            <div class="quote-details">
+                                ${quote.episode ? `<span class="quote-episode">Episode ${quote.episode}</span>` : ''}
+                                ${quote.audioId ? `<span class="quote-audio">${quote.audioId}</span>` : ''}
+                            </div>
+                        </div>
+                    </article>
+                `;
+            }).join('');
+
+            resultsContainer.innerHTML = header + `<div class="quotes-grid">${quotes}</div>`;
+        }
+
+        function renderFeaturedQuote(quote) {
+            resultsContainer.innerHTML = `
+                <article class="featured-quote">
+                    <div class="featured-label">✦ A Fragment from the Sea ✦</div>
+                    <p class="featured-text">"${escapeHtml(quote.text)}"</p>
+                    <p class="featured-character">— ${escapeHtml(quote.character)}</p>
+                    ${quote.episode ? `<p class="featured-episode">Episode ${quote.episode}</p>` : ''}
+                </article>
+            `;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        async function search(query) {
+            if (!query.trim()) {
+                showEmpty('Enter a search term to find quotes.');
+                return;
+            }
+
+            showLoading();
+
+            try {
+                const characterId = characterSelect.value;
+                let url = `${API_BASE}/search?q=${encodeURIComponent(query)}&limit=30`;
+
+                const response = await fetch(url);
+                const data = await response.json();
+
+                let results = data.results || [];
+
+                if (characterId && results.length > 0) {
+                    results = results.filter(r => r.quote.characterId === characterId);
+                }
+
+                renderQuotes(results, query);
+            } catch (error) {
+                console.error('Search failed:', error);
+                showEmpty('Failed to search. Please try again.');
+            }
+        }
+
+        async function getRandomQuote() {
+            showLoading();
+
+            try {
+                const characterId = characterSelect.value;
+                let url = `${API_BASE}/random`;
+                if (characterId) {
+                    url += `?character=${characterId}`;
+                }
+                const response = await fetch(url);
+                const quote = await response.json();
+                if (quote.error) {
+                    showEmpty('No quotes found for this character.');
+                    return;
+                }
+                renderFeaturedQuote(quote);
+            } catch (error) {
+                console.error('Failed to get random quote:', error);
+                showEmpty('Failed to retrieve a quote.');
+            }
+        }
+
+        searchBtn.addEventListener('click', () => search(searchInput.value));
+        searchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') search(searchInput.value);
+        });
+
+        randomBtn.addEventListener('click', getRandomQuote);
+
+        clearBtn.addEventListener('click', () => {
+            searchInput.value = '';
+            characterSelect.value = '';
+            resultsContainer.innerHTML = '';
+        });
+
+        characterSelect.addEventListener('change', () => {
+            if (searchInput.value.trim()) {
+                search(searchInput.value);
+            } else {
+                getRandomQuote();
+            }
+        });
+
+        createButterflies();
+        loadCharacters();
+        getRandomQuote();
+    </script>
+</body>
+</html>

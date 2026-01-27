@@ -1,6 +1,7 @@
 package quote
 
 import (
+	"html"
 	"regexp"
 	"strings"
 )
@@ -21,10 +22,10 @@ type parser struct {
 
 func NewParser() Parser {
 	return &parser{
-		dialogueLineRegex:  regexp.MustCompile(`^d \[lv`),
+		dialogueLineRegex:  regexp.MustCompile(`^d2? \[lv`),
 		voiceMetaRegex:     regexp.MustCompile(`\[lv 0\*"(\d+)"\*"(\d+)"\]`),
 		characterNameRegex: regexp.MustCompile(`\{f:\d+:([^}]+)\}`),
-		colourTextRegex:    regexp.MustCompile(`\{c:[A-Fa-f0-9]+:([^}]+)\}`),
+		colourTextRegex:    regexp.MustCompile(`\{c:([A-Fa-f0-9]+):([^}]+)\}`),
 		bracketRegex:       regexp.MustCompile(`\[[^\]]*\]`),
 		cleanupPatterns: []string{
 			"`[@]", "`[\\]", "`[|]", "`\"", "\"`",
@@ -35,6 +36,7 @@ func NewParser() Parser {
 
 type ParsedQuote struct {
 	Text        string `json:"text"`
+	TextHtml    string `json:"textHtml"`
 	CharacterID string `json:"characterId"`
 	Character   string `json:"character"`
 	AudioID     string `json:"audioId"`
@@ -55,13 +57,14 @@ func (p *parser) ParseLine(line string) *ParsedQuote {
 	audioID := matches[2]
 	episode := p.parseEpisodeFromAudioID(audioID)
 
-	text := p.extractText(line)
+	text, textHtml := p.extractText(line)
 	if text == "" {
 		return nil
 	}
 
 	return &ParsedQuote{
 		Text:        text,
+		TextHtml:    textHtml,
 		CharacterID: characterID,
 		Character:   GetCharacterName(characterID),
 		AudioID:     audioID,
@@ -80,24 +83,29 @@ func (p *parser) parseEpisodeFromAudioID(audioID string) int {
 	return 0
 }
 
-func (p *parser) extractText(line string) string {
+func (p *parser) extractText(line string) (string, string) {
 	text := line
-
-	text = p.characterNameRegex.ReplaceAllString(text, "$1")
-	text = p.colourTextRegex.ReplaceAllString(text, "$1")
 
 	for i := 0; i < len(p.cleanupPatterns); i++ {
 		text = strings.ReplaceAll(text, p.cleanupPatterns[i], "")
 	}
 
 	text = p.bracketRegex.ReplaceAllString(text, "")
-
+	text = strings.TrimPrefix(text, "d2 ")
 	text = strings.TrimPrefix(text, "d ")
 	text = strings.TrimSpace(text)
 	text = strings.Trim(text, "`\"")
 	text = strings.TrimSpace(text)
 
-	return text
+	escapedText := html.EscapeString(text)
+
+	textHtml := p.colourTextRegex.ReplaceAllString(escapedText, `<span style="color:#$1">$2</span>`)
+	textHtml = p.characterNameRegex.ReplaceAllString(textHtml, `<span class="quote-name">$1</span>`)
+
+	plainText := p.colourTextRegex.ReplaceAllString(text, "$2")
+	plainText = p.characterNameRegex.ReplaceAllString(plainText, "$1")
+
+	return plainText, textHtml
 }
 
 func (p *parser) ParseAll(lines []string) []ParsedQuote {

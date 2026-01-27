@@ -92,11 +92,12 @@ func (s *service) Search(query string, limit int, offset int, characterID string
 	}
 
 	topScore := matches[0].Score
-	threshold := topScore / 10
+	relativeThreshold := topScore / 10
+	minFuzzyScore := len(query) * 100
 
 	var fuzzyResults []SearchResult
 	for i := 0; i < len(matches); i++ {
-		if matches[i].Score >= threshold {
+		if matches[i].Score >= relativeThreshold && matches[i].Score >= minFuzzyScore {
 			if characterID == "" || s.quotes[matches[i].Index].CharacterID == characterID {
 				fuzzyResults = append(fuzzyResults, SearchResult{
 					Quote: s.quotes[matches[i].Index],

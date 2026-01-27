@@ -481,6 +481,11 @@
             opacity: 0.7;
         }
 
+        .quote-name {
+            color: var(--gold);
+            font-weight: 500;
+        }
+
         /* Pagination */
         .pagination {
             display: flex;
@@ -874,7 +879,7 @@
                 return `
                     <article class="quote-card" style="--index: ${index}">
                         <span class="quote-mark">"</span>
-                        <p class="quote-text">${escapeHtml(quote.text)}</p>
+                        <p class="quote-text">${quote.textHtml || escapeHtml(quote.text)}</p>
                         <div class="quote-meta">
                             <span class="quote-character">— ${escapeHtml(quote.character)}</span>
                             <div class="quote-details">
@@ -919,7 +924,7 @@
             resultsContainer.innerHTML = `
                 <article class="featured-quote">
                     <div class="featured-label">✦ A Fragment from the Sea ✦</div>
-                    <p class="featured-text">"${escapeHtml(quote.text)}"</p>
+                    <p class="featured-text">"${quote.textHtml || escapeHtml(quote.text)}"</p>
                     <p class="featured-character">— ${escapeHtml(quote.character)}</p>
                     ${quote.episode ? `<p class="featured-episode">Episode ${quote.episode}</p>` : ''}
                 </article>

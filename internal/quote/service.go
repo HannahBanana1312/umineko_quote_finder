@@ -19,31 +19,10 @@ type Service interface {
 	GetCharacters() map[string]string
 }
 
-type CharacterResponse struct {
-	CharacterID string        `json:"characterId"`
-	Character   string        `json:"character"`
-	Quotes      []ParsedQuote `json:"quotes"`
-	Total       int           `json:"total"`
-	Limit       int           `json:"limit"`
-	Offset      int           `json:"offset"`
-}
-
 type service struct {
 	parser     Parser
 	quotes     map[string][]ParsedQuote // "en" → English quotes, "ja" → Japanese quotes
 	quoteTexts map[string][]string      // "en" → English texts for fuzzy search
-}
-
-type SearchResult struct {
-	Quote ParsedQuote `json:"quote"`
-	Score int         `json:"score"`
-}
-
-type SearchResponse struct {
-	Results []SearchResult `json:"results"`
-	Total   int            `json:"total"`
-	Limit   int            `json:"limit"`
-	Offset  int            `json:"offset"`
 }
 
 func NewService() Service {
@@ -93,12 +72,7 @@ func (s *service) Search(query string, lang string, limit int, offset int, chara
 	quotes := s.quotes[lang]
 	quoteTexts := s.quoteTexts[lang]
 	if quotes == nil {
-		return SearchResponse{
-			Results: []SearchResult{},
-			Total:   0,
-			Limit:   limit,
-			Offset:  offset,
-		}
+		return NewSearchResponse(nil, limit, offset)
 	}
 
 	matchesFilter := func(q ParsedQuote) bool {
@@ -118,27 +92,19 @@ func (s *service) Search(query string, lang string, limit int, offset int, chara
 		for i := 0; i < len(quotes); i++ {
 			if strings.Contains(strings.ToLower(quoteTexts[i]), queryLower) {
 				if matchesFilter(quotes[i]) {
-					exactMatches = append(exactMatches, SearchResult{
-						Quote: quotes[i],
-						Score: 100,
-					})
+					exactMatches = append(exactMatches, NewSearchResult(quotes[i], 100))
 				}
 			}
 		}
 
 		if len(exactMatches) > 0 {
-			return paginateResults(exactMatches, limit, offset)
+			return NewSearchResponse(exactMatches, limit, offset)
 		}
 	}
 
 	matches := fuzzy.Find(query, quoteTexts)
 	if len(matches) == 0 {
-		return SearchResponse{
-			Results: []SearchResult{},
-			Total:   0,
-			Limit:   limit,
-			Offset:  offset,
-		}
+		return NewSearchResponse(nil, limit, offset)
 	}
 
 	topScore := matches[0].Score
@@ -149,40 +115,12 @@ func (s *service) Search(query string, lang string, limit int, offset int, chara
 	for i := 0; i < len(matches); i++ {
 		if matches[i].Score >= relativeThreshold && matches[i].Score >= minFuzzyScore {
 			if matchesFilter(quotes[matches[i].Index]) {
-				fuzzyResults = append(fuzzyResults, SearchResult{
-					Quote: quotes[matches[i].Index],
-					Score: matches[i].Score,
-				})
+				fuzzyResults = append(fuzzyResults, NewSearchResult(quotes[matches[i].Index], matches[i].Score))
 			}
 		}
 	}
 
-	return paginateResults(fuzzyResults, limit, offset)
-}
-
-func paginateResults(results []SearchResult, limit int, offset int) SearchResponse {
-	total := len(results)
-
-	if offset >= total {
-		return SearchResponse{
-			Results: []SearchResult{},
-			Total:   total,
-			Limit:   limit,
-			Offset:  offset,
-		}
-	}
-
-	end := offset + limit
-	if end > total {
-		end = total
-	}
-
-	return SearchResponse{
-		Results: results[offset:end],
-		Total:   total,
-		Limit:   limit,
-		Offset:  offset,
-	}
+	return NewSearchResponse(fuzzyResults, limit, offset)
 }
 
 func (s *service) GetByCharacter(lang string, characterID string, limit int, offset int, episode int) CharacterResponse {
@@ -198,14 +136,7 @@ func (s *service) GetByCharacter(lang string, characterID string, limit int, off
 
 	quotes := s.quotes[lang]
 	if quotes == nil {
-		return CharacterResponse{
-			CharacterID: characterID,
-			Character:   GetCharacterName(characterID),
-			Quotes:      []ParsedQuote{},
-			Total:       0,
-			Limit:       limit,
-			Offset:      offset,
-		}
+		return NewCharacterResponse(characterID, nil, limit, offset)
 	}
 
 	var all []ParsedQuote
@@ -217,31 +148,7 @@ func (s *service) GetByCharacter(lang string, characterID string, limit int, off
 		}
 	}
 
-	total := len(all)
-	if offset >= total {
-		return CharacterResponse{
-			CharacterID: characterID,
-			Character:   GetCharacterName(characterID),
-			Quotes:      []ParsedQuote{},
-			Total:       total,
-			Limit:       limit,
-			Offset:      offset,
-		}
-	}
-
-	end := offset + limit
-	if end > total {
-		end = total
-	}
-
-	return CharacterResponse{
-		CharacterID: characterID,
-		Character:   GetCharacterName(characterID),
-		Quotes:      all[offset:end],
-		Total:       total,
-		Limit:       limit,
-		Offset:      offset,
-	}
+	return NewCharacterResponse(characterID, all, limit, offset)
 }
 
 func (s *service) Random(lang string, characterID string, episode int) *ParsedQuote {
@@ -284,7 +191,7 @@ func (s *service) GetByAudioID(lang string, audioID string) *ParsedQuote {
 	}
 
 	for i := range quotes {
-		if quotes[i].AudioID == audioID {
+		if quotes[i].AudioID == audioID || strings.Contains(quotes[i].AudioID, audioID) {
 			return &quotes[i]
 		}
 	}
@@ -292,5 +199,5 @@ func (s *service) GetByAudioID(lang string, audioID string) *ParsedQuote {
 }
 
 func (s *service) GetCharacters() map[string]string {
-	return GetAllCharacters()
+	return CharacterNames.GetAllCharacters()
 }

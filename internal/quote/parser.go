@@ -3,6 +3,7 @@ package quote
 import (
 	"html"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -17,28 +18,33 @@ type textRule struct {
 }
 
 type parser struct {
-	dialogueLineRegex *regexp.Regexp
-	voiceMetaRegex    *regexp.Regexp
-	bracketRegex      *regexp.Regexp
-	cleanupPatterns   []string
-	textRules         []textRule
+	dialogueLineRegex  *regexp.Regexp
+	narratorLineRegex  *regexp.Regexp
+	voiceMetaRegex     *regexp.Regexp
+	bracketRegex       *regexp.Regexp
+	episodeMarkerRegex *regexp.Regexp
+	cleanupPatterns    []string
+	textRules          []textRule
 }
 
 func NewParser() Parser {
 	return &parser{
-		dialogueLineRegex: regexp.MustCompile(`^d2? \[lv`),
-		voiceMetaRegex:    regexp.MustCompile(`\[lv 0\*"(\d+)"\*"(\d+)"\]`),
-		bracketRegex:      regexp.MustCompile(`\[[^\]]*\]`),
+		dialogueLineRegex:  regexp.MustCompile(`^d2? \[lv`),
+		voiceMetaRegex:     regexp.MustCompile(`\[lv 0\*"(\d+)"\*"(\d+)"\]`),
+		narratorLineRegex:  regexp.MustCompile("^d2? `"),
+		bracketRegex:       regexp.MustCompile(`\[[^\]]*\]`),
+		episodeMarkerRegex: regexp.MustCompile(`^new_(?:tea|ura|episode) (\d+)\r?$`),
 		cleanupPatterns: []string{
 			"`[@]", "`[\\]", "`[|]", "`\"", "\"`",
 			"[@]", "[\\]", "[|]",
 		},
 		textRules: []textRule{
+			{regexp.MustCompile(`\{n\}`), "<br>", " "},
 			{regexp.MustCompile(`\{c:([A-Fa-f0-9]+):([^}]+)\}`), `<span style="color:#$1">$2</span>`, "$2"},
 			{regexp.MustCompile(`\{f:\d+:([^}]+)\}`), `<span class="quote-name">$1</span>`, "$1"},
 			{regexp.MustCompile(`\{p:\d{2,}:([^}]+)\}`), `<span class="quote-name">$1</span>`, "$1"},
-			{regexp.MustCompile(`\{p:1:([^}]+)\}`), `<span class="red-truth">$1</span>`, "$1"},
-			{regexp.MustCompile(`\{p:2:([^}]+)\}`), `<span class="blue-truth">$1</span>`, "$1"},
+			{regexp.MustCompile(`\{p:1:([^}]+)\}?`), `<span class="red-truth">$1</span>`, "$1"},
+			{regexp.MustCompile(`\{p:2:([^}]+)\}?`), `<span class="blue-truth">$1</span>`, "$1"},
 			{regexp.MustCompile(`\{ruby:([^:]+):([^}]+)\}`), `<ruby>$2<rp>(</rp><rt>$1</rt><rp>)</rp></ruby>`, "$2 ($1)"},
 			{regexp.MustCompile(`\{i:([^}]+)\}`), `<em>$1</em>`, "$1"},
 			{regexp.MustCompile(`\{[a-z]+:[^}]*\}`), "", ""},
@@ -60,14 +66,24 @@ func (p *parser) parseLine(line string) *ParsedQuote {
 		return nil
 	}
 
-	matches := p.voiceMetaRegex.FindStringSubmatch(line)
-	if len(matches) < 3 {
+	allMatches := p.voiceMetaRegex.FindAllStringSubmatch(line, -1)
+	if len(allMatches) == 0 || len(allMatches[0]) < 3 {
 		return nil
 	}
 
-	characterID := matches[1]
-	audioID := matches[2]
-	episode := p.parseEpisodeFromAudioID(audioID)
+	characterID := allMatches[0][1]
+	firstAudioID := allMatches[0][2]
+	episode := p.parseEpisodeFromAudioID(firstAudioID)
+
+	seen := map[string]bool{}
+	var audioIDs []string
+	for i := 0; i < len(allMatches); i++ {
+		id := allMatches[i][2]
+		if !seen[id] {
+			seen[id] = true
+			audioIDs = append(audioIDs, id)
+		}
+	}
 
 	text, textHtml := p.extractText(line)
 	if text == "" {
@@ -78,8 +94,8 @@ func (p *parser) parseLine(line string) *ParsedQuote {
 		Text:        text,
 		TextHtml:    textHtml,
 		CharacterID: characterID,
-		Character:   GetCharacterName(characterID),
-		AudioID:     audioID,
+		Character:   CharacterNames.GetCharacterName(characterID),
+		AudioID:     strings.Join(audioIDs, ", "),
 		Episode:     episode,
 	}
 }
@@ -120,14 +136,50 @@ func (p *parser) extractText(line string) (string, string) {
 	return plainText, textHtml
 }
 
+func (p *parser) parseNarratorLine(line string) *ParsedQuote {
+	if !p.narratorLineRegex.MatchString(line) {
+		return nil
+	}
+
+	text, textHtml := p.extractText(line)
+	if text == "" {
+		return nil
+	}
+
+	return &ParsedQuote{
+		Text:        text,
+		TextHtml:    textHtml,
+		CharacterID: "narrator",
+		Character:   CharacterNames.GetCharacterName("narrator"),
+		AudioID:     "",
+		Episode:     0,
+	}
+}
+
 func (p *parser) ParseAll(lines []string) []ParsedQuote {
 	var quotes []ParsedQuote
+	currentEpisode := 0
 
 	for i := 0; i < len(lines); i++ {
-		parsed := p.parseLine(lines[i])
-		if parsed != nil && len(parsed.Text) > 10 {
-			quotes = append(quotes, *parsed)
+		if matches := p.episodeMarkerRegex.FindStringSubmatch(lines[i]); len(matches) >= 2 {
+			ep, err := strconv.Atoi(matches[1])
+			if err == nil {
+				currentEpisode = ep
+			}
+			continue
 		}
+
+		parsed := p.parseLine(lines[i])
+		if parsed == nil {
+			parsed = p.parseNarratorLine(lines[i])
+		}
+		if parsed == nil || len(parsed.Text) <= 10 {
+			continue
+		}
+		if parsed.Episode == 0 && currentEpisode > 0 {
+			parsed.Episode = currentEpisode
+		}
+		quotes = append(quotes, *parsed)
 	}
 
 	return quotes

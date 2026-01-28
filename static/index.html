@@ -601,6 +601,7 @@
             margin-bottom: 1.5rem;
             position: relative;
             z-index: 1;
+            overflow-wrap: break-word;
         }
 
         .quote-meta {
@@ -620,6 +621,7 @@
 
         .quote-details {
             display: flex;
+            flex-wrap: wrap;
             gap: 1.5rem;
             font-size: 0.85rem;
             color: var(--text-muted);
@@ -629,6 +631,7 @@
             display: flex;
             align-items: center;
             gap: 0.4rem;
+            flex-shrink: 0;
         }
 
         .quote-episode::before {
@@ -644,6 +647,7 @@
             font-family: monospace;
             font-size: 0.75rem;
             opacity: 0.7;
+            flex-wrap: wrap;
         }
 
         .quote-name {
@@ -659,6 +663,11 @@
         .blue-truth {
             color: #3399ff;
             font-weight: 600;
+        }
+
+        .red-truth .quote-name,
+        .blue-truth .quote-name {
+            color: inherit;
         }
 
         /* Pagination */
@@ -812,6 +821,7 @@
             max-width: 700px;
             margin-left: auto;
             margin-right: auto;
+            overflow-wrap: break-word;
         }
 
         .featured-character {
@@ -997,6 +1007,7 @@
     </div>
 
     <script>
+    (async () => {
         const API_BASE = '/api/v1';
 
         const searchInput = document.getElementById('searchInput');
@@ -1101,7 +1112,7 @@
                             <span class="quote-character">— ${escapeHtml(quote.character)}</span>
                             <div class="quote-details">
                                 ${quote.episode ? `<span class="quote-episode">Episode ${quote.episode}</span>` : ''}
-                                ${quote.audioId ? `<span class="quote-audio">${quote.audioId}.ogg</span>` : ''}
+                                ${quote.audioId ? `<span class="quote-audio">${formatAudioIds(quote.audioId)}</span>` : ''}
                             </div>
                         </div>
                     </article>
@@ -1138,7 +1149,7 @@
         }
 
         function renderFeaturedQuote(quote) {
-            currentAudioId = quote.audioId || null;
+            currentAudioId = quote.audioId ? quote.audioId.split(', ')[0] : null;
             resultsContainer.innerHTML = `
                 <article class="featured-quote">
                     <div class="featured-label">✦ A Fragment from the Sea ✦</div>
@@ -1147,6 +1158,10 @@
                     ${quote.episode ? `<p class="featured-episode">Episode ${quote.episode}</p>` : ''}
                 </article>
             `;
+        }
+
+        function formatAudioIds(audioId) {
+            return audioId.split(', ').map(id => id + '.ogg').join(', ');
         }
 
         function escapeHtml(text) {
@@ -1185,6 +1200,7 @@
                 const results = data.results || [];
 
                 renderQuotes(results, query, data.total, data.offset);
+                updateURL();
             } catch (error) {
                 console.error('Search failed:', error);
                 showEmpty('Failed to search. Please try again.');
@@ -1212,6 +1228,7 @@
                     return;
                 }
                 renderFeaturedQuote(quote);
+                updateURL();
             } catch (error) {
                 console.error('Failed to get random quote:', error);
                 showEmpty('Failed to retrieve a quote.');
@@ -1229,6 +1246,7 @@
                     return;
                 }
                 renderFeaturedQuote(quote);
+                updateURL();
             } catch (error) {
                 console.error('Failed to get quote by audioId:', error);
                 getRandomQuote();
@@ -1255,6 +1273,7 @@
             resultsContainer.innerHTML = '';
             browseMode = false;
             browseBtn.disabled = true;
+            updateURL();
         });
 
         characterSelect.addEventListener('change', () => {
@@ -1306,6 +1325,7 @@
                 browseTotal = data.total;
 
                 renderBrowseResults(data);
+                updateURL();
             } catch (error) {
                 console.error('Browse failed:', error);
                 showEmpty('Failed to load character dialogue.');
@@ -1338,7 +1358,7 @@
                             <span class="quote-character">— ${escapeHtml(quote.character)}</span>
                             <div class="quote-details">
                                 ${quote.episode ? `<span class="quote-episode">Episode ${quote.episode}</span>` : ''}
-                                ${quote.audioId ? `<span class="quote-audio">${quote.audioId}.ogg</span>` : ''}
+                                ${quote.audioId ? `<span class="quote-audio">${formatAudioIds(quote.audioId)}</span>` : ''}
                             </div>
                         </div>
                     </article>
@@ -1374,14 +1394,88 @@
             }
         }
 
-        langBtns.forEach(btn => {
+        function updateURL() {
+            const params = new URLSearchParams();
+
+            if (browseMode && browseCharacter) {
+                params.set('browse', browseCharacter);
+            } else if (searchInput.value.trim()) {
+                params.set('q', searchInput.value.trim());
+                if (characterSelect.value) {
+                    params.set('character', characterSelect.value);
+                }
+            }
+
+            const episode = episodeSelect.value;
+            if (episode && episode !== '0') {
+                params.set('episode', episode);
+            }
+
+            const offset = browseMode ? browseOffset : currentOffset;
+            if (offset > 0) {
+                params.set('offset', offset);
+            }
+
+            if (currentLang !== 'en') {
+                params.set('lang', currentLang);
+            }
+
+            const qs = params.toString();
+            const newURL = qs ? `?${qs}` : window.location.pathname;
+            history.pushState(null, '', newURL);
+        }
+
+        function loadFromURL() {
+            const params = new URLSearchParams(window.location.search);
+
+            const lang = params.get('lang') || 'en';
+            currentLang = lang;
+            for (const b of langBtns) {
+                b.classList.toggle('active', b.dataset.lang === lang);
+            }
+
+            const episode = params.get('episode') || '0';
+            episodeSelect.value = episode;
+
+            const browse = params.get('browse');
+            const q = params.get('q');
+            const offset = parseInt(params.get('offset')) || 0;
+
+            if (browse) {
+                characterSelect.value = browse;
+                browseBtn.disabled = false;
+                browseMode = true;
+                browseCharacter = browse;
+                browseEpisode = parseInt(episode) || 0;
+                browseOffset = offset;
+                searchInput.value = '';
+                browseCharacterDialogue(browse, offset, browseEpisode);
+            } else if (q) {
+                searchInput.value = q;
+                const character = params.get('character') || '';
+                characterSelect.value = character;
+                browseBtn.disabled = !character;
+                currentOffset = offset;
+                search(q, offset);
+            } else {
+                characterSelect.value = '';
+                browseBtn.disabled = true;
+                searchInput.value = '';
+                getRandomQuote();
+            }
+        }
+
+        window.addEventListener('popstate', loadFromURL);
+
+        for (const btn of langBtns) {
             btn.addEventListener('click', () => {
                 const newLang = btn.dataset.lang;
                 if (newLang === currentLang) return;
 
                 currentLang = newLang;
-                langBtns.forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
+                for (const b of langBtns) {
+                    b.classList.toggle('active', b.dataset.lang === newLang);
+                }
 
                 if (browseMode && browseCharacter) {
                     browseCharacterDialogue(browseCharacter, browseOffset, browseEpisode);
@@ -1393,11 +1487,12 @@
                     getRandomQuote();
                 }
             });
-        });
+        }
 
         createButterflies();
-        loadCharacters();
-        getRandomQuote();
+        await loadCharacters();
+        loadFromURL();
+    })();
     </script>
 </body>
 </html>

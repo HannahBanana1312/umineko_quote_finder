@@ -1,20 +1,20 @@
 package quote
 
 import (
-	_ "embed"
+	"embed"
 	"math/rand/v2"
 	"strings"
 
 	"github.com/sahilm/fuzzy"
 )
 
-//go:embed data.txt
-var dataFile string
+//go:embed data/*
+var dataFS embed.FS
 
 type Service interface {
-	Search(query string, limit int, offset int, characterID string, episode int, forceFuzzy bool) SearchResponse
-	GetByCharacter(characterID string, limit int, offset int, episode int) CharacterResponse
-	Random(characterID string, episode int) *ParsedQuote
+	Search(query string, lang string, limit int, offset int, characterID string, episode int, forceFuzzy bool) SearchResponse
+	GetByCharacter(lang string, characterID string, limit int, offset int, episode int) CharacterResponse
+	Random(lang string, characterID string, episode int) *ParsedQuote
 	GetCharacters() map[string]string
 }
 
@@ -29,8 +29,8 @@ type CharacterResponse struct {
 
 type service struct {
 	parser     Parser
-	quotes     []ParsedQuote
-	quoteTexts []string
+	quotes     map[string][]ParsedQuote // "en" → English quotes, "ja" → Japanese quotes
+	quoteTexts map[string][]string      // "en" → English texts for fuzzy search
 }
 
 type SearchResult struct {
@@ -47,27 +47,57 @@ type SearchResponse struct {
 
 func NewService() Service {
 	p := NewParser()
-	lines := strings.Split(dataFile, "\n")
-	quotes := p.ParseAll(lines)
+	quotes := make(map[string][]ParsedQuote)
+	texts := make(map[string][]string)
 
-	quoteTexts := make([]string, len(quotes))
-	for i := 0; i < len(quotes); i++ {
-		quoteTexts[i] = quotes[i].Text
+	langFiles := map[string]string{
+		"en": "data/english.txt",
+		"ja": "data/japanese.txt",
+	}
+
+	for lang, path := range langFiles {
+		data, err := dataFS.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		lines := strings.Split(string(data), "\n")
+		parsed := p.ParseAll(lines)
+		quotes[lang] = parsed
+
+		quoteTexts := make([]string, len(parsed))
+		for i := 0; i < len(parsed); i++ {
+			quoteTexts[i] = parsed[i].Text
+		}
+		texts[lang] = quoteTexts
 	}
 
 	return &service{
 		parser:     p,
 		quotes:     quotes,
-		quoteTexts: quoteTexts,
+		quoteTexts: texts,
 	}
 }
 
-func (s *service) Search(query string, limit int, offset int, characterID string, episode int, forceFuzzy bool) SearchResponse {
+func (s *service) Search(query string, lang string, limit int, offset int, characterID string, episode int, forceFuzzy bool) SearchResponse {
 	if limit <= 0 {
 		limit = 30
 	}
 	if offset < 0 {
 		offset = 0
+	}
+	if lang == "" {
+		lang = "en"
+	}
+
+	quotes := s.quotes[lang]
+	quoteTexts := s.quoteTexts[lang]
+	if quotes == nil {
+		return SearchResponse{
+			Results: []SearchResult{},
+			Total:   0,
+			Limit:   limit,
+			Offset:  offset,
+		}
 	}
 
 	matchesFilter := func(q ParsedQuote) bool {
@@ -84,11 +114,11 @@ func (s *service) Search(query string, limit int, offset int, characterID string
 		queryLower := strings.ToLower(query)
 		var exactMatches []SearchResult
 
-		for i := 0; i < len(s.quotes); i++ {
-			if strings.Contains(strings.ToLower(s.quoteTexts[i]), queryLower) {
-				if matchesFilter(s.quotes[i]) {
+		for i := 0; i < len(quotes); i++ {
+			if strings.Contains(strings.ToLower(quoteTexts[i]), queryLower) {
+				if matchesFilter(quotes[i]) {
 					exactMatches = append(exactMatches, SearchResult{
-						Quote: s.quotes[i],
+						Quote: quotes[i],
 						Score: 100,
 					})
 				}
@@ -100,7 +130,7 @@ func (s *service) Search(query string, limit int, offset int, characterID string
 		}
 	}
 
-	matches := fuzzy.Find(query, s.quoteTexts)
+	matches := fuzzy.Find(query, quoteTexts)
 	if len(matches) == 0 {
 		return SearchResponse{
 			Results: []SearchResult{},
@@ -117,9 +147,9 @@ func (s *service) Search(query string, limit int, offset int, characterID string
 	var fuzzyResults []SearchResult
 	for i := 0; i < len(matches); i++ {
 		if matches[i].Score >= relativeThreshold && matches[i].Score >= minFuzzyScore {
-			if matchesFilter(s.quotes[matches[i].Index]) {
+			if matchesFilter(quotes[matches[i].Index]) {
 				fuzzyResults = append(fuzzyResults, SearchResult{
-					Quote: s.quotes[matches[i].Index],
+					Quote: quotes[matches[i].Index],
 					Score: matches[i].Score,
 				})
 			}
@@ -154,19 +184,34 @@ func paginateResults(results []SearchResult, limit int, offset int) SearchRespon
 	}
 }
 
-func (s *service) GetByCharacter(characterID string, limit int, offset int, episode int) CharacterResponse {
+func (s *service) GetByCharacter(lang string, characterID string, limit int, offset int, episode int) CharacterResponse {
 	if limit <= 0 {
 		limit = 50
 	}
 	if offset < 0 {
 		offset = 0
 	}
+	if lang == "" {
+		lang = "en"
+	}
+
+	quotes := s.quotes[lang]
+	if quotes == nil {
+		return CharacterResponse{
+			CharacterID: characterID,
+			Character:   GetCharacterName(characterID),
+			Quotes:      []ParsedQuote{},
+			Total:       0,
+			Limit:       limit,
+			Offset:      offset,
+		}
+	}
 
 	var all []ParsedQuote
-	for i := 0; i < len(s.quotes); i++ {
-		if s.quotes[i].CharacterID == characterID {
-			if episode <= 0 || s.quotes[i].Episode == episode {
-				all = append(all, s.quotes[i])
+	for i := 0; i < len(quotes); i++ {
+		if quotes[i].CharacterID == characterID {
+			if episode <= 0 || quotes[i].Episode == episode {
+				all = append(all, quotes[i])
 			}
 		}
 	}
@@ -198,20 +243,25 @@ func (s *service) GetByCharacter(characterID string, limit int, offset int, epis
 	}
 }
 
-func (s *service) Random(characterID string, episode int) *ParsedQuote {
-	if len(s.quotes) == 0 {
+func (s *service) Random(lang string, characterID string, episode int) *ParsedQuote {
+	if lang == "" {
+		lang = "en"
+	}
+
+	quotes := s.quotes[lang]
+	if quotes == nil || len(quotes) == 0 {
 		return nil
 	}
 
 	var filtered []ParsedQuote
-	for i := 0; i < len(s.quotes); i++ {
-		if characterID != "" && s.quotes[i].CharacterID != characterID {
+	for i := 0; i < len(quotes); i++ {
+		if characterID != "" && quotes[i].CharacterID != characterID {
 			continue
 		}
-		if episode > 0 && s.quotes[i].Episode != episode {
+		if episode > 0 && quotes[i].Episode != episode {
 			continue
 		}
-		filtered = append(filtered, s.quotes[i])
+		filtered = append(filtered, quotes[i])
 	}
 
 	if len(filtered) == 0 {

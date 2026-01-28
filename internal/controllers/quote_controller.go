@@ -35,13 +35,14 @@ func (s *Service) search(ctx *fiber.Ctx) error {
 		})
 	}
 
+	lang := ctx.Query("lang", "en")
 	limit := ctx.QueryInt("limit", 30)
 	offset := ctx.QueryInt("offset", 0)
 	characterID := ctx.Query("character")
 	episode := ctx.QueryInt("episode", 0)
 	forceFuzzy := ctx.QueryBool("fuzzy", false)
 
-	response := s.QuoteService.Search(query, limit, offset, characterID, episode, forceFuzzy)
+	response := s.QuoteService.Search(query, lang, limit, offset, characterID, episode, forceFuzzy)
 	return ctx.JSON(fiber.Map{
 		"query":   query,
 		"results": response.Results,
@@ -52,9 +53,10 @@ func (s *Service) search(ctx *fiber.Ctx) error {
 }
 
 func (s *Service) random(ctx *fiber.Ctx) error {
+	lang := ctx.Query("lang", "en")
 	characterID := ctx.Query("character")
 	episode := ctx.QueryInt("episode", 0)
-	quote := s.QuoteService.Random(characterID, episode)
+	quote := s.QuoteService.Random(lang, characterID, episode)
 	if quote == nil {
 		return ctx.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "no quotes available",
@@ -64,12 +66,13 @@ func (s *Service) random(ctx *fiber.Ctx) error {
 }
 
 func (s *Service) byCharacter(ctx *fiber.Ctx) error {
+	lang := ctx.Query("lang", "en")
 	characterID := ctx.Params("id")
 	limit := ctx.QueryInt("limit", 50)
 	offset := ctx.QueryInt("offset", 0)
 	episode := ctx.QueryInt("episode", 0)
 
-	response := s.QuoteService.GetByCharacter(characterID, limit, offset, episode)
+	response := s.QuoteService.GetByCharacter(lang, characterID, limit, offset, episode)
 	return ctx.JSON(response)
 }
 

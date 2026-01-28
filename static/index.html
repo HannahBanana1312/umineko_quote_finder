@@ -398,6 +398,37 @@
             cursor: not-allowed;
         }
 
+        /* Language Selector */
+        .language-selector {
+            display: flex;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-top: 1.5rem;
+        }
+
+        .lang-btn {
+            background: transparent;
+            border: 1px solid var(--purple-muted);
+            padding: 0.5rem 1rem;
+            font-family: var(--font-display);
+            font-size: 0.75rem;
+            letter-spacing: 0.1em;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.3s var(--ease-out);
+        }
+
+        .lang-btn:hover {
+            border-color: var(--gold);
+            color: var(--gold);
+        }
+
+        .lang-btn.active {
+            border-color: var(--gold);
+            color: var(--gold);
+            background: rgba(212, 168, 75, 0.15);
+        }
+
         /* Browse Mode Header */
         .browse-header {
             text-align: center;
@@ -846,6 +877,10 @@
             <div class="ornament">✦ ✦ ✦</div>
             <h1 class="title">Umineko Quotes</h1>
             <p class="subtitle">When the seagulls cry, none shall remain</p>
+            <div class="language-selector">
+                <button class="lang-btn active" data-lang="en">English</button>
+                <button class="lang-btn" data-lang="ja">日本語</button>
+            </div>
         </header>
 
         <section class="search-section">
@@ -919,7 +954,9 @@
         const episodeSelect = document.getElementById('episodeSelect');
         const browseBtn = document.getElementById('browseBtn');
         const resultsContainer = document.getElementById('resultsContainer');
+        const langBtns = document.querySelectorAll('.lang-btn');
 
+        let currentLang = 'en';
         let browseMode = false;
         let browseCharacter = '';
         let browseEpisode = 0;
@@ -1074,7 +1111,7 @@
             try {
                 const characterId = characterSelect.value;
                 const episode = episodeSelect.value;
-                let url = `${API_BASE}/search?q=${encodeURIComponent(query)}&limit=${PAGE_SIZE}&offset=${offset}`;
+                let url = `${API_BASE}/search?q=${encodeURIComponent(query)}&limit=${PAGE_SIZE}&offset=${offset}&lang=${currentLang}`;
                 if (characterId) {
                     url += `&character=${characterId}`;
                 }
@@ -1105,16 +1142,12 @@
             try {
                 const characterId = characterSelect.value;
                 const episode = episodeSelect.value;
-                let url = `${API_BASE}/random`;
-                const params = [];
+                let url = `${API_BASE}/random?lang=${currentLang}`;
                 if (characterId) {
-                    params.push(`character=${characterId}`);
+                    url += `&character=${characterId}`;
                 }
                 if (episode && episode !== '0') {
-                    params.push(`episode=${episode}`);
-                }
-                if (params.length > 0) {
-                    url += '?' + params.join('&');
+                    url += `&episode=${episode}`;
                 }
                 const response = await fetch(url);
                 const quote = await response.json();
@@ -1188,7 +1221,7 @@
             showLoading();
 
             try {
-                let url = `${API_BASE}/character/${characterId}?limit=${PAGE_SIZE}&offset=${offset}`;
+                let url = `${API_BASE}/character/${characterId}?limit=${PAGE_SIZE}&offset=${offset}&lang=${currentLang}`;
                 if (episode > 0) {
                     url += `&episode=${episode}`;
                 }
@@ -1266,6 +1299,28 @@
                 });
             }
         }
+
+        langBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const newLang = btn.dataset.lang;
+                if (newLang === currentLang) return;
+
+                currentLang = newLang;
+                langBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+
+                resultsContainer.innerHTML = '';
+                if (browseMode && browseCharacter) {
+                    browseOffset = 0;
+                    browseCharacterDialogue(browseCharacter, 0, browseEpisode);
+                } else if (searchInput.value.trim()) {
+                    currentOffset = 0;
+                    search(searchInput.value, 0);
+                } else {
+                    getRandomQuote();
+                }
+            });
+        });
 
         createButterflies();
         loadCharacters();

@@ -670,6 +670,49 @@
             color: inherit;
         }
 
+        .lang-card-toggle {
+            display: inline-flex;
+            border: 1px solid var(--purple-muted);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .lang-card-btn {
+            background: transparent;
+            border: none;
+            padding: 0.2rem 0.45rem;
+            font-family: var(--font-display);
+            font-size: 0.65rem;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.25s var(--ease-out);
+        }
+
+        .lang-card-btn:not(:last-child) {
+            border-right: 1px solid var(--purple-muted);
+        }
+
+        .lang-card-btn.active {
+            background: rgba(212, 168, 75, 0.15);
+            color: var(--gold);
+            cursor: default;
+        }
+
+        .lang-card-btn:not(.active):hover {
+            background: rgba(212, 168, 75, 0.08);
+            color: var(--gold-light);
+        }
+
+        .lang-card-btn:disabled {
+            opacity: 0.5;
+            cursor: wait;
+        }
+
+        .featured-quote .lang-card-toggle {
+            margin-top: 1rem;
+        }
+
         /* Pagination */
         .pagination {
             display: flex;
@@ -1113,6 +1156,7 @@
                             <div class="quote-details">
                                 ${quote.episode ? `<span class="quote-episode">Episode ${quote.episode}</span>` : ''}
                                 ${quote.audioId ? `<span class="quote-audio">${formatAudioIds(quote.audioId)}</span>` : ''}
+                                ${langToggleHTML(quote.audioId)}
                             </div>
                         </div>
                     </article>
@@ -1156,6 +1200,7 @@
                     <p class="featured-text">"${quote.textHtml || escapeHtml(quote.text)}"</p>
                     <p class="featured-character">— ${escapeHtml(quote.character)}</p>
                     ${quote.episode ? `<p class="featured-episode">Episode ${quote.episode}</p>` : ''}
+                    ${langToggleHTML(quote.audioId)}
                 </article>
             `;
         }
@@ -1168,6 +1213,14 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        function langToggleHTML(audioId) {
+            if (!audioId) return '';
+            const firstId = escapeHtml(audioId.split(', ')[0]);
+            const enActive = currentLang === 'en' ? ' active' : '';
+            const jaActive = currentLang === 'ja' ? ' active' : '';
+            return `<span class="lang-card-toggle" data-audio-id="${firstId}"><button class="lang-card-btn${enActive}" data-lang="en">EN</button><button class="lang-card-btn${jaActive}" data-lang="ja">JA</button></span>`;
         }
 
         async function search(query, offset = 0) {
@@ -1309,6 +1362,43 @@
             browseCharacterDialogue(characterId, 0, browseEpisode);
         });
 
+        resultsContainer.addEventListener('click', async (e) => {
+            const btn = e.target.closest('.lang-card-btn');
+            if (!btn || btn.classList.contains('active')) return;
+
+            const toggle = btn.closest('.lang-card-toggle');
+            const audioId = toggle.dataset.audioId;
+            const newLang = btn.dataset.lang;
+
+            for (const b of toggle.querySelectorAll('.lang-card-btn')) {
+                b.disabled = true;
+            }
+            try {
+                const response = await fetch(`${API_BASE}/quote/${audioId}?lang=${newLang}`);
+                const quote = await response.json();
+                if (quote.error) return;
+
+                const card = btn.closest('.quote-card') || btn.closest('.featured-quote');
+                const textEl = card.querySelector('.quote-text') || card.querySelector('.featured-text');
+                if (textEl) {
+                    const isFeatured = textEl.classList.contains('featured-text');
+                    textEl.innerHTML = isFeatured
+                        ? `"${quote.textHtml || escapeHtml(quote.text)}"`
+                        : (quote.textHtml || escapeHtml(quote.text));
+                }
+
+                for (const b of toggle.querySelectorAll('.lang-card-btn')) {
+                    b.classList.toggle('active', b.dataset.lang === newLang);
+                }
+            } catch (error) {
+                console.error('Failed to toggle language:', error);
+            } finally {
+                for (const b of toggle.querySelectorAll('.lang-card-btn')) {
+                    b.disabled = false;
+                }
+            }
+        });
+
         async function browseCharacterDialogue(characterId, offset = 0, episode = 0) {
             showLoading();
 
@@ -1359,6 +1449,7 @@
                             <div class="quote-details">
                                 ${quote.episode ? `<span class="quote-episode">Episode ${quote.episode}</span>` : ''}
                                 ${quote.audioId ? `<span class="quote-audio">${formatAudioIds(quote.audioId)}</span>` : ''}
+                                ${langToggleHTML(quote.audioId)}
                             </div>
                         </div>
                     </article>

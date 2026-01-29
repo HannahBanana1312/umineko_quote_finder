@@ -909,6 +909,142 @@
             opacity: 0.7;
         }
 
+        /* Audio Player */
+        .audio-player {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            width: 100%;
+            margin-top: 0.75rem;
+        }
+
+        .audio-clips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.35rem;
+        }
+
+        .audio-clip-btn {
+            background: transparent;
+            border: 1px solid var(--purple-muted);
+            padding: 0.2rem 0.5rem;
+            font-family: monospace;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.25s var(--ease-out);
+            border-radius: 2px;
+        }
+
+        .audio-clip-btn:hover {
+            border-color: var(--gold);
+            color: var(--gold);
+        }
+
+        .audio-clip-btn.active {
+            border-color: var(--gold);
+            color: var(--gold);
+            background: rgba(212, 168, 75, 0.15);
+        }
+
+        .audio-combined-btn {
+            border-color: var(--gold-dark);
+            color: var(--gold-dark);
+        }
+
+        .audio-expand-btn {
+            background: transparent;
+            border: 1px solid var(--purple-muted);
+            padding: 0.2rem 0.4rem;
+            font-size: 0.6rem;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.25s var(--ease-out);
+            border-radius: 2px;
+        }
+
+        .audio-expand-btn:hover {
+            border-color: var(--gold);
+            color: var(--gold);
+        }
+
+        .audio-individual-clips {
+            display: none;
+            flex-wrap: wrap;
+            gap: 0.35rem;
+        }
+
+        .audio-individual-clips.visible {
+            display: flex;
+        }
+
+        .audio-controls {
+            display: none;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .audio-controls.visible {
+            display: flex;
+        }
+
+        .audio-track {
+            flex: 1;
+            height: 4px;
+            background: var(--purple-muted);
+            border-radius: 2px;
+            cursor: pointer;
+            position: relative;
+            min-width: 60px;
+        }
+
+        .audio-progress {
+            height: 100%;
+            background: var(--gold);
+            border-radius: 2px;
+            width: 0%;
+            position: relative;
+            transition: none;
+        }
+
+        .audio-progress::after {
+            content: '';
+            position: absolute;
+            right: -4px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 8px;
+            height: 8px;
+            background: var(--gold);
+            border-radius: 50%;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .audio-controls:hover .audio-progress::after,
+        .audio-player.playing .audio-progress::after {
+            opacity: 1;
+        }
+
+        .audio-time {
+            font-family: monospace;
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            flex-shrink: 0;
+            min-width: 70px;
+            text-align: right;
+        }
+
+        .featured-quote .audio-player {
+            max-width: 400px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .featured-quote .audio-clips {
+            justify-content: center;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             .container {
@@ -1130,6 +1266,7 @@
         const PAGE_SIZE = 30;
 
         function renderQuotes(results, query, total, offset) {
+            stopAudio();
             currentAudioId = null;
             if (!results || results.length === 0) {
                 showEmpty();
@@ -1155,10 +1292,11 @@
                             <span class="quote-character">— ${escapeHtml(quote.character)}</span>
                             <div class="quote-details">
                                 ${quote.episode ? `<span class="quote-episode">Episode ${quote.episode}</span>` : ''}
-                                ${quote.audioId ? `<span class="quote-audio">${formatAudioIds(quote.audioId)}</span>` : ''}
+
                                 ${langToggleHTML(quote.audioId)}
                             </div>
                         </div>
+                        ${audioPlayerHTML(quote.audioId, quote.characterId)}
                     </article>
                 `;
             }).join('');
@@ -1193,6 +1331,7 @@
         }
 
         function renderFeaturedQuote(quote) {
+            stopAudio();
             currentAudioId = quote.audioId ? quote.audioId.split(', ')[0] : null;
             resultsContainer.innerHTML = `
                 <article class="featured-quote">
@@ -1200,6 +1339,7 @@
                     <p class="featured-text">"${quote.textHtml || escapeHtml(quote.text)}"</p>
                     <p class="featured-character">— ${escapeHtml(quote.character)}</p>
                     ${quote.episode ? `<p class="featured-episode">Episode ${quote.episode}</p>` : ''}
+                    ${audioPlayerHTML(quote.audioId, quote.characterId)}
                     ${langToggleHTML(quote.audioId)}
                 </article>
             `;
@@ -1222,6 +1362,153 @@
             const jaActive = currentLang === 'ja' ? ' active' : '';
             return `<span class="lang-card-toggle" data-audio-id="${firstId}"><button class="lang-card-btn${enActive}" data-lang="en">EN</button><button class="lang-card-btn${jaActive}" data-lang="ja">JA</button></span>`;
         }
+
+        function audioPlayerHTML(audioId, characterId) {
+            if (!audioId) return '';
+            const charId = escapeHtml(characterId || '');
+            const ids = audioId.split(', ');
+            let individualClips = '';
+            for (let i = 0; i < ids.length; i++) {
+                const eid = escapeHtml(ids[i]);
+                individualClips += `<button class="audio-clip-btn" data-audio-id="${eid}" data-char-id="${charId}">&#9654; ${eid}.ogg</button>`;
+            }
+            let clipsHTML;
+            if (ids.length > 1) {
+                const allIds = ids.map(id => escapeHtml(id)).join(',');
+                clipsHTML = `<div class="audio-clips"><button class="audio-clip-btn audio-combined-btn" data-char-id="${charId}" data-audio-ids="${allIds}">&#9654; Combined (${ids.length} clips)</button><button class="audio-expand-btn">&#9662; Individual</button></div><div class="audio-individual-clips">${individualClips}</div>`;
+            } else {
+                clipsHTML = `<div class="audio-clips">${individualClips}</div>`;
+            }
+            return `<div class="audio-player">
+                ${clipsHTML}
+                <div class="audio-controls">
+                    <div class="audio-track"><div class="audio-progress"></div></div>
+                    <span class="audio-time">0:00 / 0:00</span>
+                </div>
+            </div>`;
+        }
+
+        let activeAudio = null;
+        let activeBtn = null;
+        let activePlayer = null;
+
+        function formatTime(sec) {
+            if (!sec || !isFinite(sec)) return '0:00';
+            const m = Math.floor(sec / 60);
+            const s = Math.floor(sec % 60);
+            return m + ':' + (s < 10 ? '0' : '') + s;
+        }
+
+        function stopAudio() {
+            if (activeAudio) {
+                activeAudio.pause();
+                activeAudio.removeAttribute('src');
+                activeAudio.load();
+            }
+            if (activeBtn) {
+                activeBtn.classList.remove('active');
+            }
+            if (activePlayer) {
+                activePlayer.classList.remove('playing');
+                const controls = activePlayer.querySelector('.audio-controls');
+                if (controls) controls.classList.remove('visible');
+                const progress = activePlayer.querySelector('.audio-progress');
+                if (progress) progress.style.width = '0%';
+                const timeEl = activePlayer.querySelector('.audio-time');
+                if (timeEl) timeEl.textContent = '0:00 / 0:00';
+            }
+            activeBtn = null;
+            activePlayer = null;
+        }
+
+        function playAudioUrl(url, btn) {
+            const player = btn.closest('.audio-player');
+            if (activeAudio && activeBtn === btn) {
+                if (activeAudio.paused) {
+                    activeAudio.play();
+                    player.classList.add('playing');
+                } else {
+                    activeAudio.pause();
+                    player.classList.remove('playing');
+                }
+                return;
+            }
+
+            stopAudio();
+
+            if (!activeAudio) {
+                activeAudio = new Audio();
+                activeAudio.addEventListener('timeupdate', () => {
+                    if (!activePlayer) return;
+                    const progress = activePlayer.querySelector('.audio-progress');
+                    const timeEl = activePlayer.querySelector('.audio-time');
+                    if (progress && activeAudio.duration) {
+                        progress.style.width = (activeAudio.currentTime / activeAudio.duration * 100) + '%';
+                    }
+                    if (timeEl) {
+                        timeEl.textContent = formatTime(activeAudio.currentTime) + ' / ' + formatTime(activeAudio.duration);
+                    }
+                });
+                activeAudio.addEventListener('ended', () => {
+                    stopAudio();
+                });
+                activeAudio.addEventListener('loadedmetadata', () => {
+                    if (activePlayer) {
+                        const timeEl = activePlayer.querySelector('.audio-time');
+                        if (timeEl) {
+                            timeEl.textContent = '0:00 / ' + formatTime(activeAudio.duration);
+                        }
+                    }
+                });
+            }
+
+            activeBtn = btn;
+            activePlayer = player;
+            btn.classList.add('active');
+            const controls = player.querySelector('.audio-controls');
+            if (controls) controls.classList.add('visible');
+            activeAudio.src = url;
+            activeAudio.play();
+            player.classList.add('playing');
+        }
+
+        function playAudio(charId, audioId, btn) {
+            playAudioUrl(`${API_BASE}/audio/${charId}/${audioId}`, btn);
+        }
+
+        resultsContainer.addEventListener('click', (e) => {
+            const expandBtn = e.target.closest('.audio-expand-btn');
+            if (expandBtn) {
+                const player = expandBtn.closest('.audio-player');
+                const individual = player.querySelector('.audio-individual-clips');
+                if (individual) {
+                    const open = individual.classList.toggle('visible');
+                    expandBtn.innerHTML = open ? '&#9652; Individual' : '&#9662; Individual';
+                }
+                return;
+            }
+            const combinedBtn = e.target.closest('.audio-combined-btn');
+            if (combinedBtn) {
+                const charId = combinedBtn.dataset.charId;
+                const audioIds = combinedBtn.dataset.audioIds;
+                playAudioUrl(`${API_BASE}/audio/${charId}/combined?ids=${audioIds}`, combinedBtn);
+                return;
+            }
+            const clipBtn = e.target.closest('.audio-clip-btn');
+            if (clipBtn) {
+                playAudio(clipBtn.dataset.charId, clipBtn.dataset.audioId, clipBtn);
+                return;
+            }
+            const track = e.target.closest('.audio-track');
+            if (track && activeAudio && activeAudio.duration) {
+                const player = track.closest('.audio-player');
+                if (player === activePlayer) {
+                    const rect = track.getBoundingClientRect();
+                    const ratio = (e.clientX - rect.left) / rect.width;
+                    activeAudio.currentTime = ratio * activeAudio.duration;
+                }
+            }
+        });
 
         async function search(query, offset = 0) {
             if (!query.trim()) {
@@ -1320,6 +1607,7 @@
         randomBtn.addEventListener('click', getRandomQuote);
 
         clearBtn.addEventListener('click', () => {
+            stopAudio();
             searchInput.value = '';
             characterSelect.value = '';
             episodeSelect.value = '0';
@@ -1423,6 +1711,7 @@
         }
 
         function renderBrowseResults(data) {
+            stopAudio();
             currentAudioId = null;
             if (!data.quotes || data.quotes.length === 0) {
                 showEmpty('No dialogue found for this character.');
@@ -1448,10 +1737,11 @@
                             <span class="quote-character">— ${escapeHtml(quote.character)}</span>
                             <div class="quote-details">
                                 ${quote.episode ? `<span class="quote-episode">Episode ${quote.episode}</span>` : ''}
-                                ${quote.audioId ? `<span class="quote-audio">${formatAudioIds(quote.audioId)}</span>` : ''}
+
                                 ${langToggleHTML(quote.audioId)}
                             </div>
                         </div>
+                        ${audioPlayerHTML(quote.audioId, quote.characterId)}
                     </article>
                 `;
             }).join('');

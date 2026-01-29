@@ -105,3 +105,6 @@ go.work.sum
 .env
 .idea
 *.iml
+internal/quote/data/audio
+cmd
+listdupes.ps1

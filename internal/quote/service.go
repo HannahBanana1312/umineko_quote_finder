@@ -9,7 +9,9 @@ import (
 	"github.com/sahilm/fuzzy"
 )
 
-//go:embed data/*
+const audioDir = "internal/quote/data/audio"
+
+//go:embed data/*.txt
 var dataFS embed.FS
 
 type Service interface {
@@ -18,6 +20,7 @@ type Service interface {
 	GetByAudioID(lang string, audioID string) *ParsedQuote
 	Random(lang string, characterID string, episode int) *ParsedQuote
 	GetCharacters() map[string]string
+	AudioFilePath(characterId string, audioId string) string
 }
 
 type service struct {
@@ -85,7 +88,7 @@ func NewService() Service {
 	return &service{
 		quotes:     quotes,
 		quoteTexts: texts,
-		indexer:    NewIndexer(quotes),
+		indexer:    NewIndexer(quotes, audioDir),
 	}
 }
 
@@ -271,4 +274,8 @@ func (s *service) GetByAudioID(lang string, audioID string) *ParsedQuote {
 
 func (s *service) GetCharacters() map[string]string {
 	return CharacterNames.GetAllCharacters()
+}
+
+func (s *service) AudioFilePath(characterId string, audioId string) string {
+	return s.indexer.AudioFilePath(characterId, audioId)
 }

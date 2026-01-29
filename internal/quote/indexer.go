@@ -1,6 +1,8 @@
 package quote
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 )
@@ -9,6 +11,7 @@ type Indexer interface {
 	LowerTexts(lang string) []string
 	FilteredIndices(lang string, characterID string, episode int) []int
 	CharacterIndices(lang string, characterID string) []int
+	AudioFilePath(characterId string, audioId string) string
 }
 
 type indexer struct {
@@ -16,6 +19,7 @@ type indexer struct {
 	characterIndex  map[string]map[string][]int
 	episodeIndex    map[string]map[int][]int
 	quotes          map[string][]ParsedQuote
+	audioDir        string
 }
 
 type langIndexResult struct {
@@ -25,7 +29,7 @@ type langIndexResult struct {
 	epIdx      map[int][]int
 }
 
-func NewIndexer(quotes map[string][]ParsedQuote) Indexer {
+func NewIndexer(quotes map[string][]ParsedQuote, audioDir string) Indexer {
 	results := make(chan langIndexResult, len(quotes))
 	var wg sync.WaitGroup
 
@@ -65,6 +69,7 @@ func NewIndexer(quotes map[string][]ParsedQuote) Indexer {
 		characterIndex:  make(map[string]map[string][]int),
 		episodeIndex:    make(map[string]map[int][]int),
 		quotes:          quotes,
+		audioDir:        audioDir,
 	}
 
 	for r := range results {
@@ -86,6 +91,17 @@ func (idx *indexer) CharacterIndices(lang string, characterID string) []int {
 		return nil
 	}
 	return langCharIdx[characterID]
+}
+
+func (idx *indexer) AudioFilePath(characterId string, audioId string) string {
+	if idx.audioDir == "" {
+		return ""
+	}
+	path := filepath.Join(idx.audioDir, characterId, audioId+".ogg")
+	if _, err := os.Stat(path); err != nil {
+		return ""
+	}
+	return path
 }
 
 func (idx *indexer) FilteredIndices(lang string, characterID string, episode int) []int {

@@ -8,8 +8,8 @@ A quote search engine for Umineko no Naku Koro ni. Search through thousands of l
 - Filter by character and episode
 - Random quote generator
 - English/Japanese language toggle
-- Beautiful Umineko-themed web interface
-- Single executable (all assets embedded)
+- Inline audio playback for voiced lines
+- Umineko-themed web interface
 
 ## Quick Start
 
@@ -20,6 +20,22 @@ go build -o umineko_quote.exe .
 
 Open http://127.0.0.1:3000
 
+### Voice Audio (Optional)
+
+To enable audio playback, download and extract the voice files:
+
+**Linux / macOS:**
+```bash
+./setup_audio.sh
+```
+
+**Windows (PowerShell):**
+```powershell
+.\setup_audio.ps1
+```
+
+The app works without audio files — quotes will display normally but without playback controls.
+
 ## API Endpoints
 
 | Endpoint                    | Description                                  |
@@ -28,6 +44,7 @@ Open http://127.0.0.1:3000
 | `GET /api/v1/random`        | Get random quote                             |
 | `GET /api/v1/character/:id` | Get quotes by character ID                   |
 | `GET /api/v1/characters`    | List all character IDs and names             |
+| `GET /api/v1/audio/:charId/:audioId` | Stream audio file for a voice line |
 | `GET /api/v1/health`        | Health check                                 |
 
 ### Query Parameters
@@ -87,6 +104,8 @@ $env:GOOS="linux"; $env:GOARCH="amd64"; go build -o umineko_quote_linux .; $env:
 
 ## Docker
 
+The Docker build automatically downloads and extracts voice files.
+
 ```bash
 docker build -t umineko-quote .
 docker run -p 3000:3000 umineko-quote
@@ -94,12 +113,17 @@ docker run -p 3000:3000 umineko-quote
 
 ## Data
 
-Quote data is parsed from Umineko no Naku Koro ni script files. Place language files in `internal/quote/data/` before building:
+Quote data is parsed from Umineko no Naku Koro ni script files:
 
 ```
 internal/quote/data/
 ├── english.txt
-└── japanese.txt
+├── japanese.txt
+└── audio/          (downloaded via setup script or Docker build)
+    ├── 00/
+    ├── 01/
+    ├── ...
+    └── 99/
 ```
 
-Additional languages can be added by placing new files in this directory and updating the `langFiles` map in `service.go`.
+Text files are embedded at compile time. Audio files are read from disk at runtime and are organized by character ID subdirectory.

@@ -1,8 +1,15 @@
 package controllers
 
 import (
+	"regexp"
+	"strings"
+
+	"umineko_quote/internal/audio"
+
 	"github.com/gofiber/fiber/v2"
 )
+
+var audioIdPattern = regexp.MustCompile(`^[a-zA-Z0-9]+$`)
 
 func (s *Service) getAllQuoteRoutes() []FSetupRoute {
 	return []FSetupRoute{
@@ -11,6 +18,8 @@ func (s *Service) getAllQuoteRoutes() []FSetupRoute {
 		s.setupByCharacterRoute,
 		s.setupByAudioIDRoute,
 		s.setupCharactersRoute,
+		s.setupCombinedAudioRoute,
+		s.setupAudioRoute,
 	}
 }
 
@@ -98,4 +107,74 @@ func (s *Service) byAudioID(ctx *fiber.Ctx) error {
 
 func (s *Service) characters(ctx *fiber.Ctx) error {
 	return ctx.JSON(s.QuoteService.GetCharacters())
+}
+
+func (s *Service) setupCombinedAudioRoute(routeGroup fiber.Router) {
+	routeGroup.Get("/audio/:charId/combined", s.combinedAudio)
+}
+
+func (s *Service) setupAudioRoute(routeGroup fiber.Router) {
+	routeGroup.Get("/audio/:charId/:audioId", s.audio)
+}
+
+func (s *Service) audio(ctx *fiber.Ctx) error {
+	charId := ctx.Params("charId")
+	audioId := ctx.Params("audioId")
+	if !audioIdPattern.MatchString(charId) || !audioIdPattern.MatchString(audioId) {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "invalid audio ID",
+		})
+	}
+
+	filePath := s.QuoteService.AudioFilePath(charId, audioId)
+	if filePath == "" {
+		return ctx.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "audio file not found",
+		})
+	}
+
+	ctx.Set("Content-Type", "audio/ogg")
+	return ctx.SendFile(filePath)
+}
+
+func (s *Service) combinedAudio(ctx *fiber.Ctx) error {
+	charId := ctx.Params("charId")
+	if !audioIdPattern.MatchString(charId) {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "invalid character ID",
+		})
+	}
+
+	idsParam := ctx.Query("ids")
+	if idsParam == "" {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "query parameter 'ids' is required",
+		})
+	}
+
+	ids := strings.Split(idsParam, ",")
+	if len(ids) > 20 {
+		return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "maximum 20 audio IDs allowed",
+		})
+	}
+
+	for i := 0; i < len(ids); i++ {
+		ids[i] = strings.TrimSpace(ids[i])
+		if !audioIdPattern.MatchString(ids[i]) {
+			return ctx.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "invalid audio ID: " + ids[i],
+			})
+		}
+	}
+
+	data, err := audio.CombineOgg(charId, ids, s.QuoteService.AudioFilePath)
+	if err != nil {
+		return ctx.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	ctx.Set("Content-Type", "audio/ogg")
+	return ctx.Send(data)
 }

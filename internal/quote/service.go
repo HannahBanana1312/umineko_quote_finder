@@ -4,6 +4,7 @@ import (
 	"embed"
 	"math/rand/v2"
 	"strings"
+	"sync"
 
 	"github.com/sahilm/fuzzy"
 )
@@ -20,41 +21,71 @@ type Service interface {
 }
 
 type service struct {
-	parser     Parser
-	quotes     map[string][]ParsedQuote // "en" → English quotes, "ja" → Japanese quotes
-	quoteTexts map[string][]string      // "en" → English texts for fuzzy search
+	quotes     map[string][]ParsedQuote
+	quoteTexts map[string][]string
+	indexer    Indexer
+}
+
+type langParseResult struct {
+	lang   string
+	parsed []ParsedQuote
+	texts  []string
 }
 
 func NewService() Service {
 	p := NewParser()
-	quotes := make(map[string][]ParsedQuote)
-	texts := make(map[string][]string)
 
 	langFiles := map[string]string{
 		"en": "data/english.txt",
 		"ja": "data/japanese.txt",
 	}
 
-	for lang, path := range langFiles {
-		data, err := dataFS.ReadFile(path)
-		if err != nil {
-			continue
-		}
-		lines := strings.Split(string(data), "\n")
-		parsed := p.ParseAll(lines)
-		quotes[lang] = parsed
+	results := make(chan langParseResult, len(langFiles))
+	var wg sync.WaitGroup
 
-		quoteTexts := make([]string, len(parsed))
-		for i := 0; i < len(parsed); i++ {
-			quoteTexts[i] = parsed[i].Text
-		}
-		texts[lang] = quoteTexts
+	for lang, path := range langFiles {
+		wg.Add(1)
+		go func(lang, path string) {
+			defer wg.Done()
+
+			data, err := dataFS.ReadFile(path)
+			if err != nil {
+				return
+			}
+			lines := strings.Split(string(data), "\n")
+
+			parsed := p.ParseAll(lines)
+
+			texts := make([]string, len(parsed))
+			for i := 0; i < len(parsed); i++ {
+				texts[i] = parsed[i].Text
+			}
+
+			results <- langParseResult{
+				lang:   lang,
+				parsed: parsed,
+				texts:  texts,
+			}
+		}(lang, path)
+	}
+
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	quotes := make(map[string][]ParsedQuote)
+	texts := make(map[string][]string)
+
+	for r := range results {
+		quotes[r.lang] = r.parsed
+		texts[r.lang] = r.texts
 	}
 
 	return &service{
-		parser:     p,
 		quotes:     quotes,
 		quoteTexts: texts,
+		indexer:    NewIndexer(quotes),
 	}
 }
 
@@ -70,7 +101,7 @@ func (s *service) Search(query string, lang string, limit int, offset int, chara
 	}
 
 	quotes := s.quotes[lang]
-	quoteTexts := s.quoteTexts[lang]
+	lowerTexts := s.indexer.LowerTexts(lang)
 	if quotes == nil {
 		return NewSearchResponse(nil, limit, offset)
 	}
@@ -87,14 +118,28 @@ func (s *service) Search(query string, lang string, limit int, offset int, chara
 
 	if !forceFuzzy {
 		queryLower := strings.ToLower(query)
-		var exactMatches []SearchResult
 
-		for i := 0; i < len(quotes); i++ {
-			if strings.Contains(strings.ToLower(quoteTexts[i]), queryLower) {
-				if matchesFilter(quotes[i]) {
-					exactMatches = append(exactMatches, NewSearchResult(quotes[i], 100))
+		searchIndices := s.indexer.FilteredIndices(lang, characterID, episode)
+
+		var exactMatches []SearchResult
+		if searchIndices != nil {
+			if len(searchIndices) > 5000 {
+				exactMatches = concurrentExactSearch(searchIndices, lowerTexts, quotes, queryLower, matchesFilter)
+			} else {
+				for _, idx := range searchIndices {
+					if strings.Contains(lowerTexts[idx], queryLower) {
+						if matchesFilter(quotes[idx]) {
+							exactMatches = append(exactMatches, NewSearchResult(quotes[idx], 100))
+						}
+					}
 				}
 			}
+		} else {
+			allIndices := make([]int, len(quotes))
+			for i := range allIndices {
+				allIndices[i] = i
+			}
+			exactMatches = concurrentExactSearch(allIndices, lowerTexts, quotes, queryLower, matchesFilter)
 		}
 
 		if len(exactMatches) > 0 {
@@ -102,6 +147,7 @@ func (s *service) Search(query string, lang string, limit int, offset int, chara
 		}
 	}
 
+	quoteTexts := s.quoteTexts[lang]
 	matches := fuzzy.Find(query, quoteTexts)
 	if len(matches) == 0 {
 		return NewSearchResponse(nil, limit, offset)
@@ -139,11 +185,21 @@ func (s *service) GetByCharacter(lang string, characterID string, limit int, off
 		return NewCharacterResponse(characterID, nil, limit, offset)
 	}
 
+	indices := s.indexer.CharacterIndices(lang, characterID)
+	if len(indices) == 0 {
+		return NewCharacterResponse(characterID, nil, limit, offset)
+	}
+
 	var all []ParsedQuote
-	for i := 0; i < len(quotes); i++ {
-		if quotes[i].CharacterID == characterID {
-			if episode <= 0 || quotes[i].Episode == episode {
-				all = append(all, quotes[i])
+	if episode <= 0 {
+		all = make([]ParsedQuote, len(indices))
+		for i, idx := range indices {
+			all[i] = quotes[idx]
+		}
+	} else {
+		for _, idx := range indices {
+			if quotes[idx].Episode == episode {
+				all = append(all, quotes[idx])
 			}
 		}
 	}
@@ -161,6 +217,21 @@ func (s *service) Random(lang string, characterID string, episode int) *ParsedQu
 		return nil
 	}
 
+	if characterID == "" && episode <= 0 {
+		idx := rand.IntN(len(quotes))
+		return &quotes[idx]
+	}
+
+	indices := s.indexer.FilteredIndices(lang, characterID, episode)
+	if indices != nil {
+		if len(indices) == 0 {
+			return nil
+		}
+		pick := indices[rand.IntN(len(indices))]
+		q := quotes[pick]
+		return &q
+	}
+
 	var filtered []ParsedQuote
 	for i := 0; i < len(quotes); i++ {
 		if characterID != "" && quotes[i].CharacterID != characterID {
@@ -176,8 +247,8 @@ func (s *service) Random(lang string, characterID string, episode int) *ParsedQu
 		return nil
 	}
 
-	idx := rand.IntN(len(filtered))
-	return &filtered[idx]
+	pick := rand.IntN(len(filtered))
+	return &filtered[pick]
 }
 
 func (s *service) GetByAudioID(lang string, audioID string) *ParsedQuote {

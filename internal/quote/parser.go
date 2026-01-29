@@ -157,7 +157,7 @@ func (p *parser) parseNarratorLine(line string) *ParsedQuote {
 }
 
 func (p *parser) ParseAll(lines []string) []ParsedQuote {
-	var quotes []ParsedQuote
+	quotes := make([]ParsedQuote, 0, len(lines)/6)
 	currentEpisode := 0
 
 	for i := 0; i < len(lines); i++ {

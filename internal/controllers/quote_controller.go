@@ -1,10 +1,12 @@
 package controllers
 
 import (
+	"os"
 	"regexp"
 	"strings"
 
 	"umineko_quote/internal/audio"
+	"umineko_quote/internal/utils"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -133,8 +135,14 @@ func (s *Service) audio(ctx *fiber.Ctx) error {
 		})
 	}
 
-	ctx.Set("Content-Type", "audio/ogg")
-	return ctx.SendFile(filePath)
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return ctx.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to read audio file",
+		})
+	}
+
+	return utils.ServeAudio(ctx, data)
 }
 
 func (s *Service) combinedAudio(ctx *fiber.Ctx) error {
@@ -175,6 +183,5 @@ func (s *Service) combinedAudio(ctx *fiber.Ctx) error {
 		})
 	}
 
-	ctx.Set("Content-Type", "audio/ogg")
-	return ctx.Send(data)
+	return utils.ServeAudio(ctx, data)
 }

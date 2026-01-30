@@ -7,30 +7,32 @@ import (
 	"sync"
 )
 
-type Indexer interface {
-	LowerTexts(lang string) []string
-	FilteredIndices(lang string, characterID string, episode int) []int
-	CharacterIndices(lang string, characterID string) []int
-	NonNarratorIndices(lang string) []int
-	AudioFilePath(characterId string, audioId string) string
-}
+type (
+	Indexer interface {
+		LowerTexts(lang string) []string
+		FilteredIndices(lang string, characterID string, episode int) []int
+		CharacterIndices(lang string, characterID string) []int
+		NonNarratorIndices(lang string) []int
+		AudioFilePath(characterId string, audioId string) string
+	}
 
-type indexer struct {
-	quoteLowerTexts  map[string][]string
-	characterIndex   map[string]map[string][]int
-	episodeIndex     map[string]map[int][]int
-	nonNarratorIndex map[string][]int
-	quotes           map[string][]ParsedQuote
-	audioDir         string
-}
+	indexer struct {
+		quoteLowerTexts  map[string][]string
+		characterIndex   map[string]map[string][]int
+		episodeIndex     map[string]map[int][]int
+		nonNarratorIndex map[string][]int
+		quotes           map[string][]ParsedQuote
+		audioDir         string
+	}
 
-type langIndexResult struct {
-	lang           string
-	lowerTexts     []string
-	charIdx        map[string][]int
-	epIdx          map[int][]int
-	nonNarratorIdx []int
-}
+	langIndexResult struct {
+		lang           string
+		lowerTexts     []string
+		charIdx        map[string][]int
+		epIdx          map[int][]int
+		nonNarratorIdx []int
+	}
+)
 
 func NewIndexer(quotes map[string][]ParsedQuote, audioDir string) Indexer {
 	results := make(chan langIndexResult, len(quotes))

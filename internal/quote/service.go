@@ -14,26 +14,30 @@ const audioDir = "internal/quote/data/audio"
 //go:embed data/*.txt
 var dataFS embed.FS
 
-type Service interface {
-	Search(query string, lang string, limit int, offset int, characterID string, episode int, forceFuzzy bool) SearchResponse
-	GetByCharacter(lang string, characterID string, limit int, offset int, episode int) CharacterResponse
-	GetByAudioID(lang string, audioID string) *ParsedQuote
-	Random(lang string, characterID string, episode int) *ParsedQuote
-	GetCharacters() map[string]string
-	AudioFilePath(characterId string, audioId string) string
-}
+type (
+	Service interface {
+		Search(query string, lang string, limit int, offset int, characterID string, episode int, forceFuzzy bool) SearchResponse
+		GetByCharacter(lang string, characterID string, limit int, offset int, episode int) CharacterResponse
+		GetByAudioID(lang string, audioID string) *ParsedQuote
+		Random(lang string, characterID string, episode int) *ParsedQuote
+		GetCharacters() map[string]string
+		AudioFilePath(characterId string, audioId string) string
+		GetStats() Stats
+	}
 
-type service struct {
-	quotes     map[string][]ParsedQuote
-	quoteTexts map[string][]string
-	indexer    Indexer
-}
+	service struct {
+		quotes     map[string][]ParsedQuote
+		quoteTexts map[string][]string
+		indexer    Indexer
+		stats      Stats
+	}
 
-type langParseResult struct {
-	lang   string
-	parsed []ParsedQuote
-	texts  []string
-}
+	langParseResult struct {
+		lang   string
+		parsed []ParsedQuote
+		texts  []string
+	}
+)
 
 func NewService() Service {
 	p := NewParser()
@@ -89,6 +93,7 @@ func NewService() Service {
 		quotes:     quotes,
 		quoteTexts: texts,
 		indexer:    NewIndexer(quotes, audioDir),
+		stats:      NewStats(quotes["en"]),
 	}
 }
 
@@ -287,4 +292,8 @@ func (s *service) GetCharacters() map[string]string {
 
 func (s *service) AudioFilePath(characterId string, audioId string) string {
 	return s.indexer.AudioFilePath(characterId, audioId)
+}
+
+func (s *service) GetStats() Stats {
+	return s.stats
 }

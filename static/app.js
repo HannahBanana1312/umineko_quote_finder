@@ -7,6 +7,7 @@
     const audioIdBtn = document.getElementById('audioIdBtn');
     const randomBtn = document.getElementById('randomBtn');
     const clearBtn = document.getElementById('clearBtn');
+    const statsBtn = document.getElementById('statsBtn');
     const characterSelect = document.getElementById('characterSelect');
     const episodeSelect = document.getElementById('episodeSelect');
     const browseBtn = document.getElementById('browseBtn');
@@ -16,6 +17,9 @@
     let currentLang = 'en';
     let currentAudioId = null;
     let browseMode = false;
+    let statsMode = false;
+    let statsCache = {};
+    let statsCharts = [];
     let browseCharacter = '';
     let browseEpisode = 0;
     let browseOffset = 0;
@@ -170,7 +174,9 @@
     }
 
     function langToggleHTML(audioId) {
-        if (!audioId) return '';
+        if (!audioId) {
+            return '';
+        }
         const firstId = escapeHtml(audioId.split(', ')[0]);
         const enActive = currentLang === 'en' ? ' active' : '';
         const jaActive = currentLang === 'ja' ? ' active' : '';
@@ -178,7 +184,9 @@
     }
 
     function audioPlayerHTML(audioId, characterId) {
-        if (!audioId) return '';
+        if (!audioId) {
+            return '';
+        }
         const charId = escapeHtml(characterId || '');
         const ids = audioId.split(', ');
         let individualClips = '';
@@ -199,7 +207,7 @@
             ${clipsHTML}
             <div class="audio-controls">
                 <div class="audio-track"><div class="audio-progress"></div></div>
-                <div class="audio-volume"><span>VOL</span><input class="audio-volume-slider" type="range" min="0" max="100" step="1" value="${volume}"</div>
+                <div class="audio-volume"><span>VOL</span><input class="audio-volume-slider" type="range" min="0" max="100" step="1" value="${volume}"></div>
                 <span class="audio-time">0:00 / 0:00</span>
             </div>
         </div>`;
@@ -210,7 +218,9 @@
     let activePlayer = null;
 
     function formatTime(sec) {
-        if (!sec || !isFinite(sec)) return '0:00';
+        if (!sec || !isFinite(sec)) {
+            return '0:00';
+        }
         const m = Math.floor(sec / 60);
         const s = Math.floor(sec % 60);
         return m + ':' + (s < 10 ? '0' : '') + s;
@@ -228,18 +238,28 @@
         if (activePlayer) {
             activePlayer.classList.remove('playing');
             const controls = activePlayer.querySelector('.audio-controls');
-            if (controls) controls.classList.remove('visible');
+            if (controls) {
+                controls.classList.remove('visible');
+            }
             const progress = activePlayer.querySelector('.audio-progress');
-            if (progress) progress.style.width = '0%';
+            if (progress) {
+                progress.style.width = '0%';
+            }
             const timeEl = activePlayer.querySelector('.audio-time');
-            if (timeEl) timeEl.textContent = '0:00 / 0:00';
+            if (timeEl) {
+                timeEl.textContent = '0:00 / 0:00';
+            }
         }
         activeBtn = null;
         activePlayer = null;
     }
 
+    function updateSliderFill(slider) {
+        const pct = slider.value;
+        slider.style.background = `linear-gradient(to right, #d4a84b 0%, #d4a84b ${pct}%, #3d2a5c ${pct}%, #3d2a5c 100%)`;
+    }
+
     function setVolume(volume) {
-        if (!activePlayer) return;
         activeAudio.volume = volume;
         localStorage.setItem('uminekoVolume', volume.toString());
     }
@@ -265,18 +285,7 @@
             if (savedVolume) {
                 activeAudio.volume = parseFloat(savedVolume);
             }
-            if (player) {
-                const volumeSelector = player.querySelector('.audio-volume-slider');
-                if (volumeSelector) {
-                    volumeSelector.oninput = null;
-                    volumeSelector.addEventListener('input', () => {
-                        const v = parseFloat(volumeSelector.value) / 100;
-                        setVolume(v);
-                    })
-                }
-            }
             activeAudio.addEventListener('timeupdate', () => {
-                if (!activePlayer) return;
                 const progress = activePlayer.querySelector('.audio-progress');
                 const timeEl = activePlayer.querySelector('.audio-time');
                 if (progress && activeAudio.duration) {
@@ -302,8 +311,19 @@
         activeBtn = btn;
         activePlayer = player;
         btn.classList.add('active');
+        const volumeSlider = player.querySelector('.audio-volume-slider');
+        if (volumeSlider) {
+            updateSliderFill(volumeSlider);
+            volumeSlider.oninput = () => {
+                const v = parseFloat(volumeSlider.value) / 100;
+                setVolume(v);
+                updateSliderFill(volumeSlider);
+            };
+        }
         const controls = player.querySelector('.audio-controls');
-        if (controls) controls.classList.add('visible');
+        if (controls) {
+            controls.classList.add('visible');
+        }
         activeAudio.src = url;
         activeAudio.play();
         player.classList.add('playing');
@@ -354,6 +374,8 @@
         }
 
         browseMode = false;
+        statsMode = false;
+        destroyStatsCharts();
         showLoading();
 
         try {
@@ -386,6 +408,8 @@
 
     async function getRandomQuote() {
         browseMode = false;
+        statsMode = false;
+        destroyStatsCharts();
         showLoading();
 
         try {
@@ -443,24 +467,55 @@
 
     function lookupAudioId() {
         const id = audioIdInput.value.trim();
-        if (!id) return;
+        if (!id) {
+            return;
+        }
         getQuoteByAudioId(id);
     }
     audioIdBtn.addEventListener('click', lookupAudioId);
     audioIdInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') lookupAudioId();
+        if (e.key === 'Enter') {
+            lookupAudioId();
+        }
     });
 
     randomBtn.addEventListener('click', getRandomQuote);
 
+    async function loadStats() {
+        browseMode = false;
+        showLoading();
+        try {
+            const ep = parseInt(episodeSelect.value) || 0;
+            const cacheKey = 'ep' + ep;
+            if (!statsCache[cacheKey]) {
+                let url = `${API_BASE}/stats`;
+                if (ep > 0) {
+                    url += `?episode=${ep}`;
+                }
+                const response = await fetch(url);
+                statsCache[cacheKey] = await response.json();
+            }
+            statsMode = true;
+            renderStats(statsCache[cacheKey]);
+            updateURL();
+        } catch (error) {
+            console.error('Failed to load stats:', error);
+            showEmpty('Failed to load statistics.');
+        }
+    }
+
+    statsBtn.addEventListener('click', loadStats);
+
     clearBtn.addEventListener('click', () => {
         stopAudio();
+        destroyStatsCharts();
         searchInput.value = '';
         audioIdInput.value = '';
         characterSelect.value = '';
         episodeSelect.value = '0';
         resultsContainer.innerHTML = '';
         browseMode = false;
+        statsMode = false;
         browseBtn.disabled = true;
         updateURL();
     });
@@ -476,7 +531,9 @@
     });
 
     episodeSelect.addEventListener('change', () => {
-        if (browseMode && browseCharacter) {
+        if (statsMode) {
+            loadStats();
+        } else if (browseMode && browseCharacter) {
             browseEpisode = parseInt(episodeSelect.value) || 0;
             browseOffset = 0;
             browseCharacterDialogue(browseCharacter, browseOffset, browseEpisode);
@@ -488,7 +545,9 @@
 
     browseBtn.addEventListener('click', () => {
         const characterId = characterSelect.value;
-        if (!characterId) return;
+        if (!characterId) {
+            return;
+        }
 
         browseMode = true;
         browseCharacter = characterId;
@@ -500,7 +559,9 @@
 
     resultsContainer.addEventListener('click', async (e) => {
         const btn = e.target.closest('.lang-card-btn');
-        if (!btn || btn.classList.contains('active')) return;
+        if (!btn || btn.classList.contains('active')) {
+            return;
+        }
 
         const toggle = btn.closest('.lang-card-toggle');
         const audioId = toggle.dataset.audioId;
@@ -512,7 +573,9 @@
         try {
             const response = await fetch(`${API_BASE}/quote/${audioId}?lang=${newLang}`);
             const quote = await response.json();
-            if (quote.error) return;
+            if (quote.error) {
+                return;
+            }
 
             const card = btn.closest('.quote-card') || btn.closest('.featured-quote');
             const textEl = card.querySelector('.quote-text') || card.querySelector('.featured-text');
@@ -626,7 +689,9 @@
     function updateURL() {
         const params = new URLSearchParams();
 
-        if (browseMode && browseCharacter) {
+        if (statsMode) {
+            params.set('stats', '1');
+        } else if (browseMode && browseCharacter) {
             params.set('browse', browseCharacter);
         } else if (searchInput.value.trim()) {
             params.set('q', searchInput.value.trim());
@@ -669,6 +734,12 @@
         const browse = params.get('browse');
         const q = params.get('q');
         const offset = parseInt(params.get('offset')) || 0;
+        const isStats = params.get('stats') === '1';
+
+        if (isStats) {
+            loadStats();
+            return;
+        }
 
         if (browse) {
             characterSelect.value = browse;
@@ -699,7 +770,9 @@
     for (const btn of langBtns) {
         btn.addEventListener('click', () => {
             const newLang = btn.dataset.lang;
-            if (newLang === currentLang) return;
+            if (newLang === currentLang) {
+                return;
+            }
 
             currentLang = newLang;
             for (const b of langBtns) {
@@ -716,6 +789,370 @@
                 getRandomQuote();
             }
         });
+    }
+
+    function destroyStatsCharts() {
+        for (let i = 0; i < statsCharts.length; i++) {
+            statsCharts[i].destroy();
+        }
+        statsCharts = [];
+        document.querySelector('.container').classList.remove('stats-active');
+    }
+
+    function statsCardHTML(id, title, tall, wide) {
+        const tallClass = tall ? ' stats-chart-tall' : '';
+        const wideClass = wide ? ' stats-card-wide' : '';
+        return `
+            <div class="stats-card${wideClass}">
+                <div class="stats-card-header">
+                    <h3 class="stats-card-title">${title}</h3>
+                    <button class="stats-zoom-reset" data-chart-id="${id}">Reset Zoom</button>
+                </div>
+                <div class="stats-chart-container${tallClass}"><canvas id="${id}"></canvas></div>
+                <p class="stats-zoom-hint">Scroll to zoom &middot; drag to pan</p>
+            </div>
+        `;
+    }
+
+    function renderStats(data) {
+        destroyStatsCharts();
+        stopAudio();
+        currentAudioId = null;
+        document.querySelector('.container').classList.add('stats-active');
+
+        const hasAllEpisodes = data.linesPerEpisode && data.linesPerEpisode.length > 0;
+        const ep = parseInt(episodeSelect.value) || 0;
+        const epLabel = ep > 0
+            ? (data.episodeNames[ep] ? 'Episode ' + ep + ' — ' + data.episodeNames[ep] : 'Episode ' + ep)
+            : 'All Episodes';
+
+        let cards = statsCardHTML('chartTopSpeakers', 'Top Speakers', true, true);
+        if (hasAllEpisodes) {
+            cards += statsCardHTML('chartLinesPerEpisode', 'Lines per Episode', false, false);
+            cards += statsCardHTML('chartTruth', 'Red Truth &amp; Blue Truth', false, false);
+        }
+        cards += statsCardHTML('chartInteractions', 'Character Interactions', true, true);
+        if (hasAllEpisodes) {
+            cards += statsCardHTML('chartPresence', 'Character Presence by Episode', false, true);
+        }
+
+        const html = `
+            <div class="stats-header">
+                <h2 class="stats-title">Umineko Statistics</h2>
+                <p class="stats-subtitle">${epLabel} — English script lines</p>
+            </div>
+            <div class="stats-grid">
+                ${cards}
+            </div>
+        `;
+
+        resultsContainer.innerHTML = html;
+
+        Chart.defaults.font.family = "'Cormorant Garamond', serif";
+        Chart.defaults.color = '#a89bb8';
+
+        renderTopSpeakersChart(data);
+        if (hasAllEpisodes) {
+            renderLinesPerEpisodeChart(data);
+            renderTruthChart(data);
+        }
+        renderInteractionsChart(data);
+        if (hasAllEpisodes) {
+            renderPresenceChart(data);
+        }
+
+        resultsContainer.addEventListener('click', (e) => {
+            const resetBtn = e.target.closest('.stats-zoom-reset');
+            if (!resetBtn) {
+                return;
+            }
+            const chartId = resetBtn.dataset.chartId;
+            for (let i = 0; i < statsCharts.length; i++) {
+                if (statsCharts[i].canvas.id === chartId) {
+                    statsCharts[i].resetZoom();
+                    break;
+                }
+            }
+        });
+    }
+
+    const PALETTE = [
+        '#d4a84b', '#9d7bc9', '#ff3333', '#3399ff', '#6b4c9a',
+        '#f0d590', '#8b2942', '#a67c2e', '#3d2a5c', '#e8e0f0',
+        '#c97bb4', '#7bc9a3'
+    ];
+
+    const zoomConfig = {
+        zoom: {
+            wheel: { enabled: true },
+            pinch: { enabled: true },
+            mode: 'xy'
+        },
+        pan: {
+            enabled: true,
+            mode: 'xy'
+        }
+    };
+
+    function renderTopSpeakersChart(data) {
+        const labels = [];
+        const counts = [];
+        for (let i = 0; i < data.topSpeakers.length; i++) {
+            labels.push(data.topSpeakers[i].name);
+            counts.push(data.topSpeakers[i].count);
+        }
+
+        const ctx = document.getElementById('chartTopSpeakers').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Lines',
+                    data: counts,
+                    backgroundColor: '#d4a84b',
+                    borderColor: '#a67c2e',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    zoom: zoomConfig
+                },
+                scales: {
+                    x: {
+                        grid: { color: 'rgba(61, 42, 92, 0.4)' },
+                        ticks: { color: '#a89bb8' }
+                    },
+                    y: {
+                        grid: { display: false },
+                        ticks: { color: '#e8e0f0' }
+                    }
+                }
+            }
+        });
+        statsCharts.push(chart);
+    }
+
+    function renderLinesPerEpisodeChart(data) {
+        const epLabels = [];
+        for (let i = 0; i < data.linesPerEpisode.length; i++) {
+            epLabels.push('EP' + data.linesPerEpisode[i].episode + ' ' + data.linesPerEpisode[i].episodeName);
+        }
+
+        const charSet = new Set();
+        for (let i = 0; i < data.linesPerEpisode.length; i++) {
+            const chars = data.linesPerEpisode[i].characters;
+            for (const key of Object.keys(chars)) {
+                charSet.add(key);
+            }
+        }
+
+        const charIds = Array.from(charSet).filter(id => id !== 'other');
+        charIds.push('other');
+
+        const datasets = [];
+        for (let ci = 0; ci < charIds.length; ci++) {
+            const id = charIds[ci];
+            const label = id === 'other' ? 'Other' : (data.characterNames[id] || id);
+            const epData = [];
+            for (let ei = 0; ei < data.linesPerEpisode.length; ei++) {
+                epData.push(data.linesPerEpisode[ei].characters[id] || 0);
+            }
+            datasets.push({
+                label: label,
+                data: epData,
+                backgroundColor: PALETTE[ci % PALETTE.length]
+            });
+        }
+
+        const ctx = document.getElementById('chartLinesPerEpisode').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: epLabels,
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: '#a89bb8', boxWidth: 12 }
+                    },
+                    zoom: zoomConfig
+                },
+                scales: {
+                    x: {
+                        stacked: true,
+                        grid: { color: 'rgba(61, 42, 92, 0.4)' },
+                        ticks: { color: '#a89bb8' }
+                    },
+                    y: {
+                        stacked: true,
+                        grid: { color: 'rgba(61, 42, 92, 0.4)' },
+                        ticks: { color: '#a89bb8' }
+                    }
+                }
+            }
+        });
+        statsCharts.push(chart);
+    }
+
+    function renderTruthChart(data) {
+        const labels = [];
+        const redData = [];
+        const blueData = [];
+        for (let i = 0; i < data.truthPerEpisode.length; i++) {
+            labels.push('EP' + data.truthPerEpisode[i].episode);
+            redData.push(data.truthPerEpisode[i].red);
+            blueData.push(data.truthPerEpisode[i].blue);
+        }
+
+        const ctx = document.getElementById('chartTruth').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Red Truth',
+                        data: redData,
+                        backgroundColor: '#ff3333',
+                        borderColor: '#cc0000',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Blue Truth',
+                        data: blueData,
+                        backgroundColor: '#3399ff',
+                        borderColor: '#0066cc',
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: '#a89bb8' }
+                    },
+                    zoom: zoomConfig
+                },
+                scales: {
+                    x: {
+                        grid: { color: 'rgba(61, 42, 92, 0.4)' },
+                        ticks: { color: '#a89bb8' }
+                    },
+                    y: {
+                        grid: { color: 'rgba(61, 42, 92, 0.4)' },
+                        ticks: { color: '#a89bb8' }
+                    }
+                }
+            }
+        });
+        statsCharts.push(chart);
+    }
+
+    function renderInteractionsChart(data) {
+        const labels = [];
+        const counts = [];
+        for (let i = 0; i < data.interactions.length; i++) {
+            labels.push(data.interactions[i].nameA + ' & ' + data.interactions[i].nameB);
+            counts.push(data.interactions[i].count);
+        }
+
+        const ctx = document.getElementById('chartInteractions').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Adjacent Lines',
+                    data: counts,
+                    backgroundColor: '#9d7bc9',
+                    borderColor: '#6b4c9a',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    zoom: zoomConfig
+                },
+                scales: {
+                    x: {
+                        grid: { color: 'rgba(61, 42, 92, 0.4)' },
+                        ticks: { color: '#a89bb8' }
+                    },
+                    y: {
+                        grid: { display: false },
+                        ticks: { color: '#e8e0f0', font: { size: 11 } }
+                    }
+                }
+            }
+        });
+        statsCharts.push(chart);
+    }
+
+    function renderPresenceChart(data) {
+        const epLabels = [];
+        for (let ep = 1; ep <= 8; ep++) {
+            epLabels.push('EP' + ep);
+        }
+
+        const datasets = [];
+        for (let i = 0; i < data.characterPresence.length; i++) {
+            const cp = data.characterPresence[i];
+            datasets.push({
+                label: cp.name,
+                data: cp.episodes,
+                backgroundColor: PALETTE[i % PALETTE.length],
+                borderColor: PALETTE[i % PALETTE.length],
+                borderWidth: 1
+            });
+        }
+
+        const ctx = document.getElementById('chartPresence').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: epLabels,
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: '#a89bb8', boxWidth: 12 }
+                    },
+                    zoom: zoomConfig
+                },
+                scales: {
+                    x: {
+                        grid: { color: 'rgba(61, 42, 92, 0.4)' },
+                        ticks: { color: '#a89bb8' }
+                    },
+                    y: {
+                        grid: { color: 'rgba(61, 42, 92, 0.4)' },
+                        ticks: { color: '#a89bb8' }
+                    }
+                }
+            }
+        });
+        statsCharts.push(chart);
     }
 
     createButterflies();

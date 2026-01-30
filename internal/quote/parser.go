@@ -7,25 +7,36 @@ import (
 	"strings"
 )
 
-type Parser interface {
-	ParseAll(lines []string) []ParsedQuote
-}
+type (
+	Parser interface {
+		ParseAll(lines []string) []ParsedQuote
+	}
 
-type textRule struct {
-	pattern   *regexp.Regexp
-	htmlRepl  string
-	plainRepl string
-}
+	ParsedQuote struct {
+		Text        string `json:"text"`
+		TextHtml    string `json:"textHtml"`
+		CharacterID string `json:"characterId"`
+		Character   string `json:"character"`
+		AudioID     string `json:"audioId"`
+		Episode     int    `json:"episode"`
+	}
 
-type parser struct {
-	dialogueLineRegex  *regexp.Regexp
-	narratorLineRegex  *regexp.Regexp
-	voiceMetaRegex     *regexp.Regexp
-	bracketRegex       *regexp.Regexp
-	episodeMarkerRegex *regexp.Regexp
-	cleanupPatterns    []string
-	textRules          []textRule
-}
+	textRule struct {
+		pattern   *regexp.Regexp
+		htmlRepl  string
+		plainRepl string
+	}
+
+	parser struct {
+		dialogueLineRegex  *regexp.Regexp
+		narratorLineRegex  *regexp.Regexp
+		voiceMetaRegex     *regexp.Regexp
+		bracketRegex       *regexp.Regexp
+		episodeMarkerRegex *regexp.Regexp
+		cleanupPatterns    []string
+		textRules          []textRule
+	}
+)
 
 func NewParser() Parser {
 	return &parser{
@@ -51,15 +62,6 @@ func NewParser() Parser {
 			{regexp.MustCompile(`\{[a-z]+:[^}]*\}`), "", ""},
 		},
 	}
-}
-
-type ParsedQuote struct {
-	Text        string `json:"text"`
-	TextHtml    string `json:"textHtml"`
-	CharacterID string `json:"characterId"`
-	Character   string `json:"character"`
-	AudioID     string `json:"audioId"`
-	Episode     int    `json:"episode"`
 }
 
 func (p *parser) parseLine(line string) *ParsedQuote {

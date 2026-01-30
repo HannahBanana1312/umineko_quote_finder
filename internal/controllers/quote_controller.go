@@ -22,6 +22,7 @@ func (s *Service) getAllQuoteRoutes() []FSetupRoute {
 		s.setupCharactersRoute,
 		s.setupCombinedAudioRoute,
 		s.setupAudioRoute,
+		s.setupStatsRoute,
 	}
 }
 
@@ -109,6 +110,15 @@ func (s *Service) byAudioID(ctx *fiber.Ctx) error {
 
 func (s *Service) characters(ctx *fiber.Ctx) error {
 	return ctx.JSON(s.QuoteService.GetCharacters())
+}
+
+func (s *Service) setupStatsRoute(routeGroup fiber.Router) {
+	routeGroup.Get("/stats", s.stats)
+}
+
+func (s *Service) stats(ctx *fiber.Ctx) error {
+	episode := ctx.QueryInt("episode", 0)
+	return ctx.JSON(s.QuoteService.GetStats().Compute(episode))
 }
 
 func (s *Service) setupCombinedAudioRoute(routeGroup fiber.Router) {

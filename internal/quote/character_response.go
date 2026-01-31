@@ -14,12 +14,17 @@ func NewCharacterResponse(characterID string, quotes []ParsedQuote, limit int, o
 		quotes = []ParsedQuote{}
 	}
 
+	var characterName string
+	if characterID != "" {
+		characterName = CharacterNames.GetCharacterName(characterID)
+	}
+
 	total := len(quotes)
 
 	if offset >= total {
 		return CharacterResponse{
 			CharacterID: characterID,
-			Character:   CharacterNames.GetCharacterName(characterID),
+			Character:   characterName,
 			Quotes:      []ParsedQuote{},
 			Total:       total,
 			Limit:       limit,
@@ -34,7 +39,7 @@ func NewCharacterResponse(characterID string, quotes []ParsedQuote, limit int, o
 
 	return CharacterResponse{
 		CharacterID: characterID,
-		Character:   CharacterNames.GetCharacterName(characterID),
+		Character:   characterName,
 		Quotes:      quotes[offset:end],
 		Total:       total,
 		Limit:       limit,

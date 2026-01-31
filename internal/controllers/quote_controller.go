@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"umineko_quote/internal/audio"
+	"umineko_quote/internal/quote"
 	"umineko_quote/internal/utils"
 
 	"github.com/gofiber/fiber/v2"
@@ -17,6 +18,7 @@ func (s *Service) getAllQuoteRoutes() []FSetupRoute {
 	return []FSetupRoute{
 		s.setupSearchRoute,
 		s.setupRandomRoute,
+		s.setupBrowseRoute,
 		s.setupByCharacterRoute,
 		s.setupByAudioIDRoute,
 		s.setupCharactersRoute,
@@ -32,6 +34,10 @@ func (s *Service) setupSearchRoute(routeGroup fiber.Router) {
 
 func (s *Service) setupRandomRoute(routeGroup fiber.Router) {
 	routeGroup.Get("/random", s.random)
+}
+
+func (s *Service) setupBrowseRoute(routeGroup fiber.Router) {
+	routeGroup.Get("/browse", s.browse)
 }
 
 func (s *Service) setupByCharacterRoute(routeGroup fiber.Router) {
@@ -60,8 +66,9 @@ func (s *Service) search(ctx *fiber.Ctx) error {
 	characterID := ctx.Query("character")
 	episode := ctx.QueryInt("episode", 0)
 	forceFuzzy := ctx.QueryBool("fuzzy", false)
+	truth := quote.TruthAll.Parse(ctx.Query("truth"))
 
-	response := s.QuoteService.Search(query, lang, limit, offset, characterID, episode, forceFuzzy)
+	response := s.QuoteService.Search(query, lang, limit, offset, characterID, episode, forceFuzzy, truth)
 	return ctx.JSON(fiber.Map{
 		"query":   query,
 		"results": response.Results,
@@ -75,13 +82,26 @@ func (s *Service) random(ctx *fiber.Ctx) error {
 	lang := ctx.Query("lang", "en")
 	characterID := ctx.Query("character")
 	episode := ctx.QueryInt("episode", 0)
-	quote := s.QuoteService.Random(lang, characterID, episode)
-	if quote == nil {
+	truth := quote.TruthAll.Parse(ctx.Query("truth"))
+	q := s.QuoteService.Random(lang, characterID, episode, truth)
+	if q == nil {
 		return ctx.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "no quotes available",
 		})
 	}
-	return ctx.JSON(quote)
+	return ctx.JSON(q)
+}
+
+func (s *Service) browse(ctx *fiber.Ctx) error {
+	lang := ctx.Query("lang", "en")
+	characterID := ctx.Query("character")
+	limit := ctx.QueryInt("limit", 50)
+	offset := ctx.QueryInt("offset", 0)
+	episode := ctx.QueryInt("episode", 0)
+	truth := quote.TruthAll.Parse(ctx.Query("truth"))
+
+	response := s.QuoteService.Browse(lang, characterID, limit, offset, episode, truth)
+	return ctx.JSON(response)
 }
 
 func (s *Service) byCharacter(ctx *fiber.Ctx) error {
@@ -90,8 +110,9 @@ func (s *Service) byCharacter(ctx *fiber.Ctx) error {
 	limit := ctx.QueryInt("limit", 50)
 	offset := ctx.QueryInt("offset", 0)
 	episode := ctx.QueryInt("episode", 0)
+	truth := quote.TruthAll.Parse(ctx.Query("truth"))
 
-	response := s.QuoteService.GetByCharacter(lang, characterID, limit, offset, episode)
+	response := s.QuoteService.GetByCharacter(lang, characterID, limit, offset, episode, truth)
 	return ctx.JSON(response)
 }
 

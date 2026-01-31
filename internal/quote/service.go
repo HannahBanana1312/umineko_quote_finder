@@ -16,10 +16,11 @@ var dataFS embed.FS
 
 type (
 	Service interface {
-		Search(query string, lang string, limit int, offset int, characterID string, episode int, forceFuzzy bool) SearchResponse
-		GetByCharacter(lang string, characterID string, limit int, offset int, episode int) CharacterResponse
+		Search(query string, lang string, limit int, offset int, characterID string, episode int, forceFuzzy bool, truth Truth) SearchResponse
+		Browse(lang string, characterID string, limit int, offset int, episode int, truth Truth) CharacterResponse
+		GetByCharacter(lang string, characterID string, limit int, offset int, episode int, truth Truth) CharacterResponse
 		GetByAudioID(lang string, audioID string) *ParsedQuote
-		Random(lang string, characterID string, episode int) *ParsedQuote
+		Random(lang string, characterID string, episode int, truth Truth) *ParsedQuote
 		GetCharacters() map[string]string
 		AudioFilePath(characterId string, audioId string) string
 		GetStats() Stats
@@ -97,7 +98,7 @@ func NewService() Service {
 	}
 }
 
-func (s *service) Search(query string, lang string, limit int, offset int, characterID string, episode int, forceFuzzy bool) SearchResponse {
+func (s *service) Search(query string, lang string, limit int, offset int, characterID string, episode int, forceFuzzy bool, truth Truth) SearchResponse {
 	if limit <= 0 {
 		limit = 30
 	}
@@ -119,6 +120,12 @@ func (s *service) Search(query string, lang string, limit int, offset int, chara
 			return false
 		}
 		if episode > 0 && q.Episode != episode {
+			return false
+		}
+		if truth == TruthRed && !strings.Contains(q.TextHtml, "red-truth") {
+			return false
+		}
+		if truth == TruthBlue && !strings.Contains(q.TextHtml, "blue-truth") {
 			return false
 		}
 		return true
@@ -177,7 +184,49 @@ func (s *service) Search(query string, lang string, limit int, offset int, chara
 	return NewSearchResponse(fuzzyResults, limit, offset)
 }
 
-func (s *service) GetByCharacter(lang string, characterID string, limit int, offset int, episode int) CharacterResponse {
+func (s *service) Browse(lang string, characterID string, limit int, offset int, episode int, truth Truth) CharacterResponse {
+	if limit <= 0 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	if lang == "" {
+		lang = "en"
+	}
+
+	quotes := s.quotes[lang]
+	if quotes == nil {
+		return NewCharacterResponse(characterID, nil, limit, offset)
+	}
+
+	var source []int
+	indexed := s.indexer.FilteredIndices(lang, characterID, episode)
+	if indexed != nil {
+		source = indexed
+	} else {
+		source = make([]int, len(quotes))
+		for i := range source {
+			source[i] = i
+		}
+	}
+
+	var all []ParsedQuote
+	for _, idx := range source {
+		q := quotes[idx]
+		if truth == TruthRed && !strings.Contains(q.TextHtml, "red-truth") {
+			continue
+		}
+		if truth == TruthBlue && !strings.Contains(q.TextHtml, "blue-truth") {
+			continue
+		}
+		all = append(all, q)
+	}
+
+	return NewCharacterResponse(characterID, all, limit, offset)
+}
+
+func (s *service) GetByCharacter(lang string, characterID string, limit int, offset int, episode int, truth Truth) CharacterResponse {
 	if limit <= 0 {
 		limit = 50
 	}
@@ -199,23 +248,24 @@ func (s *service) GetByCharacter(lang string, characterID string, limit int, off
 	}
 
 	var all []ParsedQuote
-	if episode <= 0 {
-		all = make([]ParsedQuote, len(indices))
-		for i, idx := range indices {
-			all[i] = quotes[idx]
+	for _, idx := range indices {
+		q := quotes[idx]
+		if episode > 0 && q.Episode != episode {
+			continue
 		}
-	} else {
-		for _, idx := range indices {
-			if quotes[idx].Episode == episode {
-				all = append(all, quotes[idx])
-			}
+		if truth == TruthRed && !strings.Contains(q.TextHtml, "red-truth") {
+			continue
 		}
+		if truth == TruthBlue && !strings.Contains(q.TextHtml, "blue-truth") {
+			continue
+		}
+		all = append(all, q)
 	}
 
 	return NewCharacterResponse(characterID, all, limit, offset)
 }
 
-func (s *service) Random(lang string, characterID string, episode int) *ParsedQuote {
+func (s *service) Random(lang string, characterID string, episode int, truth Truth) *ParsedQuote {
 	if lang == "" {
 		lang = "en"
 	}
@@ -225,13 +275,62 @@ func (s *service) Random(lang string, characterID string, episode int) *ParsedQu
 		return nil
 	}
 
-	if characterID == "" && episode <= 0 {
+	matchesTruth := func(q ParsedQuote) bool {
+		if truth == TruthRed && !strings.Contains(q.TextHtml, "red-truth") {
+			return false
+		}
+		if truth == TruthBlue && !strings.Contains(q.TextHtml, "blue-truth") {
+			return false
+		}
+		return true
+	}
+
+	if characterID == "" && episode <= 0 && truth == TruthAll {
 		indices := s.indexer.NonNarratorIndices(lang)
 		if len(indices) == 0 {
 			return nil
 		}
 		pick := indices[rand.IntN(len(indices))]
 		return &quotes[pick]
+	}
+
+	var candidates []int
+
+	if truth != TruthAll {
+		var source []int
+		indexed := s.indexer.FilteredIndices(lang, characterID, episode)
+		if indexed != nil {
+			source = indexed
+		} else if characterID == "" && episode <= 0 {
+			source = s.indexer.NonNarratorIndices(lang)
+		}
+
+		if source != nil {
+			for _, idx := range source {
+				if matchesTruth(quotes[idx]) {
+					candidates = append(candidates, idx)
+				}
+			}
+		} else {
+			for i := 0; i < len(quotes); i++ {
+				if characterID != "" && quotes[i].CharacterID != characterID {
+					continue
+				}
+				if episode > 0 && quotes[i].Episode != episode {
+					continue
+				}
+				if matchesTruth(quotes[i]) {
+					candidates = append(candidates, i)
+				}
+			}
+		}
+
+		if len(candidates) == 0 {
+			return nil
+		}
+		pick := candidates[rand.IntN(len(candidates))]
+		q := quotes[pick]
+		return &q
 	}
 
 	indices := s.indexer.FilteredIndices(lang, characterID, episode)

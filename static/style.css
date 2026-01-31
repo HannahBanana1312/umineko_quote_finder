@@ -329,7 +329,8 @@ body {
 }
 
 .character-select,
-.episode-select {
+.episode-select,
+.truth-select {
     display: block;
     background: var(--bg-card);
     border: 1px solid var(--purple-muted);
@@ -355,14 +356,20 @@ body {
     min-width: 150px;
 }
 
+.truth-select {
+    min-width: 140px;
+}
+
 .character-select:focus,
-.episode-select:focus {
+.episode-select:focus,
+.truth-select:focus {
     outline: none;
     border-color: var(--gold);
 }
 
 .character-select option,
-.episode-select option {
+.episode-select option,
+.truth-select option {
     background: var(--bg-purple);
     color: var(--text);
 }

@@ -141,6 +141,17 @@ func (s *statsComputer) tally(episode int) tallies {
 			continue
 		}
 
+		if strings.Contains(q.TextHtml, "red-truth") {
+			counts := t.epTruth[q.Episode]
+			counts[0]++
+			t.epTruth[q.Episode] = counts
+		}
+		if strings.Contains(q.TextHtml, "blue-truth") {
+			counts := t.epTruth[q.Episode]
+			counts[1]++
+			t.epTruth[q.Episode] = counts
+		}
+
 		if q.CharacterID == "narrator" {
 			prevCharID = ""
 			continue
@@ -152,17 +163,6 @@ func (s *statsComputer) tally(episode int) tallies {
 			t.charEpCounts[q.CharacterID] = make(map[int]int)
 		}
 		t.charEpCounts[q.CharacterID][q.Episode]++
-
-		if strings.Contains(q.TextHtml, "red-truth") {
-			counts := t.epTruth[q.Episode]
-			counts[0]++
-			t.epTruth[q.Episode] = counts
-		}
-		if strings.Contains(q.TextHtml, "blue-truth") {
-			counts := t.epTruth[q.Episode]
-			counts[1]++
-			t.epTruth[q.Episode] = counts
-		}
 
 		if prevCharID != "" && prevCharID != q.CharacterID && prevEpisode == q.Episode {
 			a, b := prevCharID, q.CharacterID

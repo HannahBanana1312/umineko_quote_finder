@@ -11,6 +11,7 @@
     const characterSelect = document.getElementById('characterSelect');
     const episodeSelect = document.getElementById('episodeSelect');
     const browseBtn = document.getElementById('browseBtn');
+    const truthSelect = document.getElementById('truthSelect');
     const resultsContainer = document.getElementById('resultsContainer');
     const langBtns = document.querySelectorAll('.lang-btn');
 
@@ -381,12 +382,16 @@
         try {
             const characterId = characterSelect.value;
             const episode = episodeSelect.value;
+            const truth = truthSelect.value;
             let url = `${API_BASE}/search?q=${encodeURIComponent(query)}&limit=${PAGE_SIZE}&offset=${offset}&lang=${currentLang}`;
             if (characterId) {
                 url += `&character=${characterId}`;
             }
             if (episode && episode !== '0') {
                 url += `&episode=${episode}`;
+            }
+            if (truth) {
+                url += `&truth=${truth}`;
             }
 
             const response = await fetch(url);
@@ -415,12 +420,16 @@
         try {
             const characterId = characterSelect.value;
             const episode = episodeSelect.value;
+            const truth = truthSelect.value;
             let url = `${API_BASE}/random?lang=${currentLang}`;
             if (characterId) {
                 url += `&character=${characterId}`;
             }
             if (episode && episode !== '0') {
                 url += `&episode=${episode}`;
+            }
+            if (truth) {
+                url += `&truth=${truth}`;
             }
             const response = await fetch(url);
             const quote = await response.json();
@@ -513,15 +522,20 @@
         audioIdInput.value = '';
         characterSelect.value = '';
         episodeSelect.value = '0';
+        truthSelect.value = '';
         resultsContainer.innerHTML = '';
         browseMode = false;
         statsMode = false;
-        browseBtn.disabled = true;
+        updateBrowseBtn();
         updateURL();
     });
 
+    function updateBrowseBtn() {
+        browseBtn.disabled = !characterSelect.value && !truthSelect.value;
+    }
+
     characterSelect.addEventListener('change', () => {
-        browseBtn.disabled = !characterSelect.value;
+        updateBrowseBtn();
         if (!browseMode) {
             currentOffset = 0;
             if (searchInput.value.trim()) {
@@ -533,10 +547,21 @@
     episodeSelect.addEventListener('change', () => {
         if (statsMode) {
             loadStats();
-        } else if (browseMode && browseCharacter) {
+        } else if (browseMode) {
             browseEpisode = parseInt(episodeSelect.value) || 0;
             browseOffset = 0;
-            browseCharacterDialogue(browseCharacter, browseOffset, browseEpisode);
+            browseDialogue(browseCharacter, browseOffset, browseEpisode);
+        } else if (searchInput.value.trim()) {
+            currentOffset = 0;
+            search(searchInput.value, 0);
+        }
+    });
+
+    truthSelect.addEventListener('change', () => {
+        updateBrowseBtn();
+        if (browseMode) {
+            browseOffset = 0;
+            browseDialogue(browseCharacter, browseOffset, browseEpisode);
         } else if (searchInput.value.trim()) {
             currentOffset = 0;
             search(searchInput.value, 0);
@@ -545,7 +570,8 @@
 
     browseBtn.addEventListener('click', () => {
         const characterId = characterSelect.value;
-        if (!characterId) {
+        const truth = truthSelect.value;
+        if (!characterId && !truth) {
             return;
         }
 
@@ -554,7 +580,7 @@
         browseEpisode = parseInt(episodeSelect.value) || 0;
         browseOffset = 0;
         searchInput.value = '';
-        browseCharacterDialogue(characterId, 0, browseEpisode);
+        browseDialogue(characterId, 0, browseEpisode);
     });
 
     resultsContainer.addEventListener('click', async (e) => {
@@ -598,13 +624,20 @@
         }
     });
 
-    async function browseCharacterDialogue(characterId, offset = 0, episode = 0) {
+    async function browseDialogue(characterId, offset = 0, episode = 0) {
         showLoading();
 
         try {
-            let url = `${API_BASE}/character/${characterId}?limit=${PAGE_SIZE}&offset=${offset}&lang=${currentLang}`;
+            const truth = truthSelect.value;
+            let url = `${API_BASE}/browse?limit=${PAGE_SIZE}&offset=${offset}&lang=${currentLang}`;
+            if (characterId) {
+                url += `&character=${characterId}`;
+            }
             if (episode > 0) {
                 url += `&episode=${episode}`;
+            }
+            if (truth) {
+                url += `&truth=${truth}`;
             }
 
             const response = await fetch(url);
@@ -617,7 +650,7 @@
             updateURL();
         } catch (error) {
             console.error('Browse failed:', error);
-            showEmpty('Failed to load character dialogue.');
+            showEmpty('Failed to load dialogue.');
         }
     }
 
@@ -630,9 +663,11 @@
         }
 
         const episodeLabel = browseEpisode > 0 ? ` — Episode ${browseEpisode}` : '';
+        const truthLabel = truthSelect.value === 'red' ? ' — Red Truth' : (truthSelect.value === 'blue' ? ' — Blue Truth' : '');
+        const titleName = data.character || 'All Characters';
         const header = `
             <div class="browse-header">
-                <h2 class="browse-title">${escapeHtml(data.character)}${episodeLabel}</h2>
+                <h2 class="browse-title">${escapeHtml(titleName)}${episodeLabel}${truthLabel}</h2>
                 <p class="browse-subtitle">Showing lines ${data.offset + 1}-${data.offset + data.quotes.length} of ${data.total} in story order</p>
             </div>
         `;
@@ -674,13 +709,13 @@
             document.getElementById('browsePrev')?.addEventListener('click', () => {
                 if (browseOffset >= PAGE_SIZE) {
                     browseOffset -= PAGE_SIZE;
-                    browseCharacterDialogue(browseCharacter, browseOffset, browseEpisode);
+                    browseDialogue(browseCharacter, browseOffset, browseEpisode);
                 }
             });
             document.getElementById('browseNext')?.addEventListener('click', () => {
                 if (browseOffset + PAGE_SIZE < browseTotal) {
                     browseOffset += PAGE_SIZE;
-                    browseCharacterDialogue(browseCharacter, browseOffset, browseEpisode);
+                    browseDialogue(browseCharacter, browseOffset, browseEpisode);
                 }
             });
         }
@@ -691,8 +726,8 @@
 
         if (statsMode) {
             params.set('stats', '1');
-        } else if (browseMode && browseCharacter) {
-            params.set('browse', browseCharacter);
+        } else if (browseMode) {
+            params.set('browse', browseCharacter || '1');
         } else if (searchInput.value.trim()) {
             params.set('q', searchInput.value.trim());
             if (characterSelect.value) {
@@ -703,6 +738,11 @@
         const episode = episodeSelect.value;
         if (episode && episode !== '0') {
             params.set('episode', episode);
+        }
+
+        const truth = truthSelect.value;
+        if (truth) {
+            params.set('truth', truth);
         }
 
         const offset = browseMode ? browseOffset : currentOffset;
@@ -731,6 +771,9 @@
         const episode = params.get('episode') || '0';
         episodeSelect.value = episode;
 
+        const truth = params.get('truth') || '';
+        truthSelect.value = truth;
+
         const browse = params.get('browse');
         const q = params.get('q');
         const offset = parseInt(params.get('offset')) || 0;
@@ -742,24 +785,27 @@
         }
 
         if (browse) {
-            characterSelect.value = browse;
-            browseBtn.disabled = false;
+            const isCharacter = browse !== '1';
+            if (isCharacter) {
+                characterSelect.value = browse;
+            }
+            updateBrowseBtn();
             browseMode = true;
-            browseCharacter = browse;
+            browseCharacter = isCharacter ? browse : '';
             browseEpisode = parseInt(episode) || 0;
             browseOffset = offset;
             searchInput.value = '';
-            browseCharacterDialogue(browse, offset, browseEpisode);
+            browseDialogue(browseCharacter, offset, browseEpisode);
         } else if (q) {
             searchInput.value = q;
             const character = params.get('character') || '';
             characterSelect.value = character;
-            browseBtn.disabled = !character;
+            updateBrowseBtn();
             currentOffset = offset;
             search(q, offset);
         } else {
             characterSelect.value = '';
-            browseBtn.disabled = true;
+            updateBrowseBtn();
             searchInput.value = '';
             getRandomQuote();
         }
@@ -779,8 +825,8 @@
                 b.classList.toggle('active', b.dataset.lang === newLang);
             }
 
-            if (browseMode && browseCharacter) {
-                browseCharacterDialogue(browseCharacter, browseOffset, browseEpisode);
+            if (browseMode) {
+                browseDialogue(browseCharacter, browseOffset, browseEpisode);
             } else if (searchInput.value.trim()) {
                 search(searchInput.value, currentOffset);
             } else if (currentAudioId) {

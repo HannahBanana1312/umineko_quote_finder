@@ -92,16 +92,20 @@ voice.zip
     {
       "quote": {
         "text": "Without love, it cannot be seen.",
+        "textHtml": "Without love, it cannot be seen.",
         "characterId": "27",
         "character": "Beatrice",
         "audioId": "10700001",
-        "episode": 1
+        "episode": 1,
+        "contentType": ""
       },
       "score": 95
     }
   ]
 }
 ```
+
+The `contentType` field distinguishes content sections: `""` for main episodes, `"tea"` for tea parties, and `"ura"` for omakes (bonus content).
 
 ## Build
 
@@ -152,3 +156,65 @@ internal/quote/data/
 ```
 
 Text files are embedded at compile time. Audio files are read from disk at runtime and are organized by character ID subdirectory.
+
+## Script Tag Parsing
+
+The source text files use [ONScripter-RU](https://github.com/umineko-project/onscripter-ru) dialogue formatting. The parser strips or converts these tags for display. Tags are processed in a loop to handle nesting (e.g. `{nobr:{m:-5:——}—}`).
+
+### Tags with HTML rendering
+
+| Script tag                          | Plain text     | HTML                                                    |
+|-------------------------------------|----------------|---------------------------------------------------------|
+| `{n}`                               | space          | `<br>`                                                  |
+| `{i:text}` / `{italic:text}`        | text           | `<em>text</em>`                                         |
+| `{c:HEX:text}` / `{color:HEX:text}` | text           | `<span style="color:#HEX">text</span>`                  |
+| `{p:1:text}` (red truth preset)     | text           | `<span class="red-truth">text</span>`                   |
+| `{p:2:text}` (blue truth preset)    | text           | `<span class="blue-truth">text</span>`                  |
+| `{p:N:text}` (other presets)        | text           | `<span class="quote-name">text</span>`                  |
+| `{f:N:text}` / `{font:N:text}`      | text           | `<span class="quote-name">text</span>`                  |
+| `{ruby:reading:text}`               | text (reading) | `<ruby>text<rp>(</rp><rt>reading</rt><rp>)</rp></ruby>` |
+
+### Tags stripped to content
+
+These tags control visual styling in the game engine (font size, spacing, line breaking, gradients, etc.) that doesn't apply in a web context. The tag is removed and the inner text is kept.
+
+| Script tag                                 | Result      |
+|--------------------------------------------|-------------|
+| `{bold:text}` / `{b:text}`                 | text        |
+| `{bolditalic:text}` / `{x:text}`           | text        |
+| `{underline:text}` / `{u:text}`            | text        |
+| `{gradient:N:text}` / `{g:N:text}`         | text        |
+| `{nobreak:text}` / `{nobr:text}`           | text        |
+| `{fit:text}` / `{j:text}`                  | text        |
+| `{center:text}` / `{ac:text}`              | text        |
+| `{fontsize:N:text}` / `{d:N:text}`         | text        |
+| `{fontsizepercent:N:text}` / `{e:N:text}`  | text        |
+| `{characterspacing:N:text}` / `{m:N:text}` | text        |
+| `{border:N:text}` / `{o:N:text}`           | text        |
+| `{shadow:X,Y:text}` / `{s:X,Y:text}`       | text        |
+| `{shadowcolor:HEX:text}` / `{v:HEX:text}`  | text        |
+| `{bordercolor:HEX:text}` / `{r:HEX:text}`  | text        |
+| `{width:text}` / `{w:text}`                | text        |
+| `{loghint:hint:text}` / `{l:hint:text}`    | text        |
+| `{a:param:text}` (alignment)               | text        |
+| `{n:N:text}` (conditional, default shown)  | text        |
+| `{y:N:text}` (conditional, not default)    | *(removed)* |
+| Any other `{Tag:...:text}`                 | text        |
+
+### Special character tags
+
+These are replaced before other processing.
+
+| Tag                  | Replacement                          |
+|----------------------|--------------------------------------|
+| `{0}`                | *(zero-width space, removed)*        |
+| `{-}`                | *(soft hyphen, removed)*             |
+| `{qt}`               | `"`                                  |
+| `{ob}` / `{eb}`      | `{` / `}`                            |
+| `{os}` / `{es}`      | `[` / `]`                            |
+| `{t}` / `{parallel}` | *(parallel display marker, removed)* |
+
+### Other cleanup
+
+- Backticks (`` ` ``), inline commands (`[@]`, `[\]`, `[|]`), and voice metadata (`[lv ...]`) are stripped
+- `{Comment:...}` translator notes are stripped entirely

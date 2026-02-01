@@ -65,7 +65,7 @@ func (g *ImageGenerator) boldOrFallback(lang string) *sfnt.Font {
 	return g.boldFont
 }
 
-func (g *ImageGenerator) Generate(audioId, lang, text, character string, episode int) ([]byte, error) {
+func (g *ImageGenerator) Generate(audioId, lang, text, character string, episode int, contentType string) ([]byte, error) {
 	cacheKey := audioId + ":" + lang
 	if cached, ok := g.cache.Load(cacheKey); ok {
 		return cached.([]byte), nil
@@ -114,7 +114,7 @@ func (g *ImageGenerator) Generate(audioId, lang, text, character string, episode
 		}
 		dc.SetFontFace(epFace)
 		dc.SetColor(mutedColor)
-		dc.DrawString(g.episodeName(episode), 60, float64(imgHeight)-88)
+		dc.DrawString(g.episodeName(episode, contentType), 60, float64(imgHeight)-88)
 	}
 
 	brandFace, err := opentype.NewFace(g.regularFont, &opentype.FaceOptions{Size: 16, DPI: 72})
@@ -143,7 +143,7 @@ func truncateText(s string, maxRunes int) string {
 	return s
 }
 
-func (*ImageGenerator) episodeName(ep int) string {
+func (*ImageGenerator) episodeName(ep int, contentType string) string {
 	names := map[int]string{
 		1: "Episode 1 \u2014 Legend",
 		2: "Episode 2 \u2014 Turn",
@@ -154,8 +154,15 @@ func (*ImageGenerator) episodeName(ep int) string {
 		7: "Episode 7 \u2014 Requiem",
 		8: "Episode 8 \u2014 Twilight",
 	}
-	if name, ok := names[ep]; ok {
-		return name
+	name, ok := names[ep]
+	if !ok {
+		return ""
 	}
-	return ""
+	if contentType == "tea" {
+		return name + " \u2014 Tea Party"
+	}
+	if contentType == "ura" {
+		return name + " \u2014 Omake"
+	}
+	return name
 }

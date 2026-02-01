@@ -19,6 +19,7 @@ type (
 		Character   string `json:"character"`
 		AudioID     string `json:"audioId"`
 		Episode     int    `json:"episode"`
+		ContentType string `json:"contentType"`
 	}
 
 	textRule struct {
@@ -28,38 +29,61 @@ type (
 	}
 
 	parser struct {
-		dialogueLineRegex  *regexp.Regexp
-		narratorLineRegex  *regexp.Regexp
-		voiceMetaRegex     *regexp.Regexp
-		bracketRegex       *regexp.Regexp
-		episodeMarkerRegex *regexp.Regexp
-		cleanupPatterns    []string
-		textRules          []textRule
+		dialogueLineRegex *regexp.Regexp
+		narratorLineRegex *regexp.Regexp
+		voiceMetaRegex    *regexp.Regexp
+		bracketRegex      *regexp.Regexp
+		episodeRegex      *regexp.Regexp
+		teaRegex          *regexp.Regexp
+		uraRegex          *regexp.Regexp
+		cleanupPatterns   []string
+		textRules         []textRule
+	}
+)
+
+var (
+	specialCharTags = []struct {
+		tag         string
+		replacement string
+	}{
+		{"{0}", ""},
+		{"{-}", ""},
+		{"{qt}", `"`},
+		{"{ob}", "{"},
+		{"{eb}", "}"},
+		{"{os}", "["},
+		{"{es}", "]"},
+		{"{t}", ""},
+		{"{parallel}", ""},
 	}
 )
 
 func NewParser() Parser {
 	return &parser{
-		dialogueLineRegex:  regexp.MustCompile(`^d2? \[lv`),
-		voiceMetaRegex:     regexp.MustCompile(`\[lv 0\*"(\d+)"\*"(\d+)"\]`),
-		narratorLineRegex:  regexp.MustCompile("^d2? `"),
-		bracketRegex:       regexp.MustCompile(`\[[^\]]*\]`),
-		episodeMarkerRegex: regexp.MustCompile(`^new_(?:tea|ura|episode) (\d+)\r?$`),
+		dialogueLineRegex: regexp.MustCompile(`^d2? \[lv`),
+		voiceMetaRegex:    regexp.MustCompile(`\[lv 0\*"(\d+)"\*"(\d+)"\]`),
+		narratorLineRegex: regexp.MustCompile("^d2? `"),
+		bracketRegex:      regexp.MustCompile(`\[[^\]]*\]`),
+		episodeRegex:      regexp.MustCompile(`^new_episode (\d+)\r?$`),
+		teaRegex:          regexp.MustCompile(`^new_tea (\d+)\r?$`),
+		uraRegex:          regexp.MustCompile(`^new_ura (\d+)\r?$`),
 		cleanupPatterns: []string{
 			"`[@]", "`[\\]", "`[|]", "`\"", "\"`",
 			"[@]", "[\\]", "[|]",
 		},
 		textRules: []textRule{
 			{regexp.MustCompile(`\{n\}`), "<br>", " "},
-			{regexp.MustCompile(`\{c:([A-Fa-f0-9]+):([^}]+)\}`), `<span style="color:#$1">$2</span>`, "$2"},
-			{regexp.MustCompile(`\{f:\d+:([^}]+)\}`), `<span class="quote-name">$1</span>`, "$1"},
-			{regexp.MustCompile(`\{p:\d{2,}:([^}]+)\}`), `<span class="quote-name">$1</span>`, "$1"},
-			{regexp.MustCompile(`\{p:1:([^}]+)\}?`), `<span class="red-truth">$1</span>`, "$1"},
-			{regexp.MustCompile(`\{p:2:([^}]+)\}?`), `<span class="blue-truth">$1</span>`, "$1"},
-			{regexp.MustCompile(`\{ruby:([^:]+):([^}]+)\}`), `<ruby>$2<rp>(</rp><rt>$1</rt><rp>)</rp></ruby>`, "$2 ($1)"},
-			{regexp.MustCompile(`\{i:([^}]+)\}`), `<em>$1</em>`, "$1"},
-			{regexp.MustCompile(`\{a:[^:]*:(.*)\}`), "$1", "$1"},
-			{regexp.MustCompile(`\{[a-z]+:[^}]*\}`), "", ""},
+			{regexp.MustCompile(`\{c:([A-Fa-f0-9]+):([^{}]+)\}`), `<span style="color:#$1">$2</span>`, "$2"},
+			{regexp.MustCompile(`\{f:\d+:([^{}]+)\}`), `<span class="quote-name">$1</span>`, "$1"},
+			{regexp.MustCompile(`\{p:\d{2,}:([^{}]+)\}`), `<span class="quote-name">$1</span>`, "$1"},
+			{regexp.MustCompile(`\{p:1:([^{}]+)\}?`), `<span class="red-truth">$1</span>`, "$1"},
+			{regexp.MustCompile(`\{p:2:([^{}]+)\}?`), `<span class="blue-truth">$1</span>`, "$1"},
+			{regexp.MustCompile(`\{ruby:([^:]+):([^{}]+)\}`), `<ruby>$2<rp>(</rp><rt>$1</rt><rp>)</rp></ruby>`, "$2 ($1)"},
+			{regexp.MustCompile(`\{i:([^{}]+)\}`), `<em>$1</em>`, "$1"},
+			{regexp.MustCompile(`\{y:\d+:([^{}]*)\}`), "", ""},
+			{regexp.MustCompile(`\{n:\d+:([^{}]*)\}`), "$1", "$1"},
+			{regexp.MustCompile(`\{a:[^{}:]*:([^{}]*)\}`), "$1", "$1"},
+			{regexp.MustCompile(`\{[a-zA-Z]+:(?:[^{}:]*:)?([^{}]*)\}`), "$1", "$1"},
 		},
 	}
 }
@@ -126,14 +150,27 @@ func (p *parser) extractText(line string) (string, string) {
 	text = strings.TrimPrefix(text, "d ")
 	text = strings.TrimSpace(text)
 	text = strings.Trim(text, "`\"")
+	text = strings.ReplaceAll(text, "`", "")
 	text = strings.TrimSpace(text)
 
 	plainText := text
 	textHtml := html.EscapeString(text)
 
-	for _, rule := range p.textRules {
-		textHtml = rule.pattern.ReplaceAllString(textHtml, rule.htmlRepl)
-		plainText = rule.pattern.ReplaceAllString(plainText, rule.plainRepl)
+	for _, sc := range specialCharTags {
+		plainText = strings.ReplaceAll(plainText, sc.tag, sc.replacement)
+		textHtml = strings.ReplaceAll(textHtml, sc.tag, sc.replacement)
+	}
+
+	for {
+		prevHtml := textHtml
+		prevPlain := plainText
+		for _, rule := range p.textRules {
+			textHtml = rule.pattern.ReplaceAllString(textHtml, rule.htmlRepl)
+			plainText = rule.pattern.ReplaceAllString(plainText, rule.plainRepl)
+		}
+		if textHtml == prevHtml && plainText == prevPlain {
+			break
+		}
 	}
 
 	return plainText, textHtml
@@ -186,19 +223,39 @@ func (p *parser) parseNarratorLine(line string) *ParsedQuote {
 func (p *parser) ParseAll(lines []string) []ParsedQuote {
 	quotes := make([]ParsedQuote, 0, len(lines)/6)
 	currentEpisode := 0
+	currentContentType := ""
 
 	for i := 0; i < len(lines); i++ {
-		if matches := p.episodeMarkerRegex.FindStringSubmatch(lines[i]); len(matches) >= 2 {
+		line := lines[i]
+
+		if matches := p.episodeRegex.FindStringSubmatch(line); len(matches) >= 2 {
 			ep, err := strconv.Atoi(matches[1])
 			if err == nil {
 				currentEpisode = ep
+				currentContentType = ""
+			}
+			continue
+		}
+		if matches := p.teaRegex.FindStringSubmatch(line); len(matches) >= 2 {
+			ep, err := strconv.Atoi(matches[1])
+			if err == nil {
+				currentEpisode = ep
+				currentContentType = "tea"
+			}
+			continue
+		}
+		if matches := p.uraRegex.FindStringSubmatch(line); len(matches) >= 2 {
+			ep, err := strconv.Atoi(matches[1])
+			if err == nil {
+				currentEpisode = ep
+				currentContentType = "ura"
 			}
 			continue
 		}
 
-		parsed := p.parseLine(lines[i])
+		parsed := p.parseLine(line)
 		if parsed == nil {
-			parsed = p.parseNarratorLine(lines[i])
+			parsed = p.parseNarratorLine(line)
 		}
 		if parsed == nil || len(parsed.Text) <= 10 {
 			continue
@@ -206,6 +263,7 @@ func (p *parser) ParseAll(lines []string) []ParsedQuote {
 		if parsed.Episode == 0 && currentEpisode > 0 {
 			parsed.Episode = currentEpisode
 		}
+		parsed.ContentType = currentContentType
 		quotes = append(quotes, *parsed)
 	}
 

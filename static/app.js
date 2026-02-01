@@ -27,6 +27,19 @@
     let browseOffset = 0;
     let browseTotal = 0;
 
+    const contentTypeLabels = { tea: 'Tea Party', ura: 'Omake' };
+
+    function episodeLabel(quote) {
+        if (!quote.episode) {
+            return '';
+        }
+        let label = `Episode ${quote.episode}`;
+        if (quote.contentType && contentTypeLabels[quote.contentType]) {
+            label += ` \u2014 ${contentTypeLabels[quote.contentType]}`;
+        }
+        return label;
+    }
+
     function createButterflies() {
         const container = document.getElementById('butterflies');
         const count = 8;
@@ -111,7 +124,7 @@
                     <div class="quote-meta">
                         <span class="quote-character">— ${escapeHtml(quote.character)}</span>
                         <div class="quote-details">
-                            ${quote.episode ? `<span class="quote-episode">Episode ${quote.episode}</span>` : ''}
+                            ${quote.episode ? `<span class="quote-episode">${episodeLabel(quote)}</span>` : ''}
 
                             ${langToggleHTML(quote.audioId)}
                         </div>
@@ -159,7 +172,7 @@
                 <div class="featured-label">✦ A Fragment from the Sea ✦</div>
                 <p class="featured-text">"${quote.textHtml || escapeHtml(quote.text)}"</p>
                 <p class="featured-character">— ${escapeHtml(quote.character)}</p>
-                ${quote.episode ? `<p class="featured-episode">Episode ${quote.episode}</p>` : ''}
+                ${quote.episode ? `<p class="featured-episode">${episodeLabel(quote)}</p>` : ''}
                 ${audioPlayerHTML(quote.audioId, quote.characterId)}
                 ${langToggleHTML(quote.audioId)}
                 ${shareBtnHTML(quote.audioId)}
@@ -719,7 +732,7 @@
                     <div class="quote-meta">
                         <span class="quote-character">— ${escapeHtml(quote.character)}</span>
                         <div class="quote-details">
-                            ${quote.episode ? `<span class="quote-episode">Episode ${quote.episode}</span>` : ''}
+                            ${quote.episode ? `<span class="quote-episode">${episodeLabel(quote)}</span>` : ''}
 
                             ${langToggleHTML(quote.audioId)}
                         </div>

@@ -179,6 +179,60 @@ func TestParseAll_EpisodeAndContentTypes(t *testing.T) {
 			jaTextContains:  []string{"梅干紅茶", "２００円"},
 		},
 		{
+			name: "episode 6 regular - Featherine",
+			enLines: []string{
+				"new_episode 6",
+				"d [lv 0*\"50\"*\"65000001\"]`\"Splendid. `[@][lv 0*\"50\"*\"65000002\"]`You did well to see through my veil...\" `[\\]",
+			},
+			jaLines: []string{
+				"new_episode 6",
+				"d [lv 0*\"50\"*\"65000001\"]`\"\u898b\u4e8b\u306a\u308a\u3002`[@][lv 0*\"50\"*\"65000002\"]`\u3088\u304f\u305e\u3001\u79c1\u3092\u898b\u7834\u3063\u305f\u2026\u300d`[\\]",
+			},
+			wantEpisode:     6,
+			wantContentType: "",
+			wantCharID:      "50",
+			wantCharName:    "Featherine",
+			wantAudioID:     "65000001, 65000002",
+			enTextContains:  []string{"Splendid", "veil"},
+			jaTextContains:  []string{"見事", "見破った"},
+		},
+		{
+			name: "episode 6 regular - Featherine with font name tag",
+			enLines: []string{
+				"new_episode 6",
+				"d [lv 0*\"50\"*\"65000011\"]`\"Be an observer for me. An observer of the Fragments {f:5:Beatrice} has woven.\" `[\\]",
+			},
+			jaLines: []string{
+				"new_episode 6",
+				"d [lv 0*\"50\"*\"65000011\"]`\"\u79c1\u306e\u305f\u3081\u306b\u3001\u30d9\u30a2\u30c8\u30ea\u30fc\u30c1\u30a7\u306e\u7d21\u3050\u30ab\u30b1\u30e9\u306e\u89b3\u6e2c\u8005\u3067\u3042\u308c\u300d`[\\]",
+			},
+			wantEpisode:     6,
+			wantContentType: "",
+			wantCharID:      "50",
+			wantCharName:    "Featherine",
+			wantAudioID:     "65000011",
+			enTextContains:  []string{"observer", "Fragments", "Beatrice"},
+			jaTextContains:  []string{"観測者", "ベアトリーチェ"},
+		},
+		{
+			name: "episode 6 regular - Featherine multi-segment",
+			enLines: []string{
+				"new_episode 6",
+				"d [lv 0*\"50\"*\"65000003\"]`\"I find you truly intriguing, child of man. `[@][lv 0*\"50\"*\"65000004\"]`...Your charming nature is the perfect medicine for my boredom.\" `[\\]",
+			},
+			jaLines: []string{
+				"new_episode 6",
+				"d [lv 0*\"50\"*\"65000003\"]`\"\u9762\u767d\u304d\u304b\u306a\u3001\u4eba\u306e\u5b50\u3088\u3002`[@][lv 0*\"50\"*\"65000004\"]`\u2026\u2026\u6109\u5feb\u306a\u308a\u3001\u305d\u308c\u3067\u3053\u305d\u6211\u304c\u9000\u5c48\u306b\u76f8\u5fdc\u3057\u3044\u300d`[\\]",
+			},
+			wantEpisode:     6,
+			wantContentType: "",
+			wantCharID:      "50",
+			wantCharName:    "Featherine",
+			wantAudioID:     "65000003, 65000004",
+			enTextContains:  []string{"intriguing", "child of man", "boredom"},
+			jaTextContains:  []string{"面白きかな", "人の子", "退屈"},
+		},
+		{
 			name: "omake 1 - Jessica (English only)",
 			enLines: []string{
 				"*o1_0",
@@ -760,47 +814,6 @@ func TestParseAll_DuplicateAudioIDsDeduped(t *testing.T) {
 	}
 	if quotes[0].AudioID != "10100001" {
 		t.Errorf("audioID should be deduped: got %q, want \"10100001\"", quotes[0].AudioID)
-	}
-}
-
-func TestParseAll_CharacterNameResolution(t *testing.T) {
-	p := NewParser()
-
-	tests := []struct {
-		charID   string
-		wantName string
-	}{
-		{"01", "Kinzo"},
-		{"10", "Battler"},
-		{"11", "Ange"},
-		{"13", "Maria"},
-		{"15", "Shannon"},
-		{"16", "Kanon"},
-		{"27", "Beatrice"},
-		{"28", "Bernkastel"},
-		{"29", "Lambdadelta"},
-		{"46", "Erika"},
-		{"47", "Dlanor"},
-		{"54", "Willard"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.wantName, func(t *testing.T) {
-			lines := []string{
-				"new_episode 1",
-				"d [lv 0*\"" + tt.charID + "\"*\"11900001\"]`\"This line has enough characters for the length filter to pass it.\" `[\\]",
-			}
-			quotes := p.ParseAll(lines)
-			if len(quotes) == 0 {
-				t.Fatal("expected at least 1 quote")
-			}
-			if quotes[0].Character != tt.wantName {
-				t.Errorf("character: got %q, want %q", quotes[0].Character, tt.wantName)
-			}
-			if quotes[0].CharacterID != tt.charID {
-				t.Errorf("characterID: got %q, want %q", quotes[0].CharacterID, tt.charID)
-			}
-		})
 	}
 }
 

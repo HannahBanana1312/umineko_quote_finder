@@ -4,6 +4,7 @@ import (
 	"embed"
 	"net/http"
 	"umineko_quote/internal/controllers"
+	"umineko_quote/internal/og"
 	"umineko_quote/internal/quote"
 	"umineko_quote/internal/routes"
 	"umineko_quote/internal/utils"
@@ -25,7 +26,9 @@ func main() {
 	}))
 
 	quoteService := quote.NewService()
-	service := controllers.NewService(quoteService)
+	ogGen := og.NewImageGenerator()
+	htmlBytes, _ := staticFiles.ReadFile("static/index.html")
+	service := controllers.NewService(quoteService, ogGen, string(htmlBytes))
 	routes.PublicRoutes(service, app)
 
 	app.Use("/", filesystem.New(filesystem.Config{

@@ -133,9 +133,7 @@ func (s *statsComputer) tally(episode int) tallies {
 	var prevCharID string
 	var prevEpisode int
 
-	for i := 0; i < len(s.quotes); i++ {
-		q := s.quotes[i]
-
+	for _, q := range s.quotes {
 		if episode != AllEpisodes && q.Episode != episode {
 			prevCharID = ""
 			continue

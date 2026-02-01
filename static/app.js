@@ -19,6 +19,7 @@
     let currentAudioId = null;
     let browseMode = false;
     let statsMode = false;
+    let quoteMode = false;
     let statsCache = {};
     let statsCharts = [];
     let browseCharacter = '';
@@ -116,6 +117,7 @@
                         </div>
                     </div>
                     ${audioPlayerHTML(quote.audioId, quote.characterId)}
+                    ${shareBtnHTML(quote.audioId)}
                 </article>
             `;
         }).join('');
@@ -160,6 +162,7 @@
                 ${quote.episode ? `<p class="featured-episode">Episode ${quote.episode}</p>` : ''}
                 ${audioPlayerHTML(quote.audioId, quote.characterId)}
                 ${langToggleHTML(quote.audioId)}
+                ${shareBtnHTML(quote.audioId)}
             </article>
         `;
     }
@@ -182,6 +185,14 @@
         const enActive = currentLang === 'en' ? ' active' : '';
         const jaActive = currentLang === 'ja' ? ' active' : '';
         return `<span class="lang-card-toggle" data-audio-id="${firstId}"><button class="lang-card-btn${enActive}" data-lang="en">EN</button><button class="lang-card-btn${jaActive}" data-lang="ja">JA</button></span>`;
+    }
+
+    function shareBtnHTML(audioId) {
+        if (!audioId) {
+            return '';
+        }
+        const firstId = escapeHtml(audioId.split(', ')[0]);
+        return `<button class="share-btn" data-audio-id="${firstId}">Share this Fragment</button>`;
     }
 
     function audioPlayerHTML(audioId, characterId) {
@@ -335,6 +346,24 @@
     }
 
     resultsContainer.addEventListener('click', (e) => {
+        const shareBtn = e.target.closest('.share-btn');
+        if (shareBtn) {
+            const audioId = shareBtn.dataset.audioId;
+            const card = shareBtn.closest('.featured-quote') || shareBtn.closest('.quote-card');
+            const activeLangBtn = card ? card.querySelector('.lang-card-btn.active') : null;
+            const lang = activeLangBtn ? activeLangBtn.dataset.lang : currentLang;
+            let url = window.location.origin + '/?quote=' + audioId;
+            if (lang !== 'en') {
+                url += '&lang=' + lang;
+            }
+            navigator.clipboard.writeText(url).then(() => {
+                shareBtn.textContent = 'Link Copied';
+                setTimeout(() => {
+                    shareBtn.textContent = 'Share this Fragment';
+                }, 2000);
+            });
+            return;
+        }
         const expandBtn = e.target.closest('.audio-expand-btn');
         if (expandBtn) {
             const player = expandBtn.closest('.audio-player');
@@ -376,6 +405,7 @@
 
         browseMode = false;
         statsMode = false;
+        quoteMode = false;
         destroyStatsCharts();
         showLoading();
 
@@ -414,6 +444,7 @@
     async function getRandomQuote() {
         browseMode = false;
         statsMode = false;
+        quoteMode = false;
         destroyStatsCharts();
         showLoading();
 
@@ -446,6 +477,9 @@
     }
 
     async function getQuoteByAudioId(audioId) {
+        browseMode = false;
+        statsMode = false;
+        destroyStatsCharts();
         showLoading();
 
         try {
@@ -492,6 +526,7 @@
 
     async function loadStats() {
         browseMode = false;
+        quoteMode = false;
         showLoading();
         try {
             const ep = parseInt(episodeSelect.value) || 0;
@@ -526,6 +561,7 @@
         resultsContainer.innerHTML = '';
         browseMode = false;
         statsMode = false;
+        quoteMode = false;
         updateBrowseBtn();
         updateURL();
     });
@@ -576,6 +612,7 @@
         }
 
         browseMode = true;
+        quoteMode = false;
         browseCharacter = characterId;
         browseEpisode = parseInt(episodeSelect.value) || 0;
         browseOffset = 0;
@@ -688,6 +725,7 @@
                         </div>
                     </div>
                     ${audioPlayerHTML(quote.audioId, quote.characterId)}
+                    ${shareBtnHTML(quote.audioId)}
                 </article>
             `;
         }).join('');
@@ -733,6 +771,8 @@
             if (characterSelect.value) {
                 params.set('character', characterSelect.value);
             }
+        } else if (quoteMode && currentAudioId) {
+            params.set('quote', currentAudioId);
         }
 
         const episode = episodeSelect.value;
@@ -781,6 +821,13 @@
 
         if (isStats) {
             loadStats();
+            return;
+        }
+
+        const quoteId = params.get('quote');
+        if (quoteId) {
+            quoteMode = true;
+            getQuoteByAudioId(quoteId);
             return;
         }
 
